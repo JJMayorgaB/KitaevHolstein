@@ -122,11 +122,11 @@ omega0  = 1.0
 cv_val  = 1.0
 Lam_fix = 3*np.sqrt(2)
 th      = 1.047
-nph_wig = 85
+nph_wig = 100
 
 g1 = Lam_fix*np.cos(th)
 g2 = Lam_fix*np.sin(th)
-M  = 55
+M  = 75
 
 ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
     M, cv_val, cv_val, omega0, omega0, g1, g2)
