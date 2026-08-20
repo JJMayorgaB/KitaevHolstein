@@ -178,6 +178,19 @@ def reduced_dm_mode_exact(psi_ph, nph, mode):
     return rho
 
 
+def entanglement_measures_pure(rho1, tol=1e-12):
+    """Para un estado bipartito PURO: negatividad logarítmica y entropía de
+       von Neumann, ambas del espectro de Schmidt {λ_i} = eig(ρ1).
+         E_N = log2 ||ρ^{T_2}||_1 = 2 log2( Σ_i sqrt(λ_i) )
+         S   = -Σ_i λ_i log2 λ_i
+       Ambas saturan en 1 ebit para el gato bimodal (rango de Schmidt 2)."""
+    ev = np.linalg.eigvalsh(rho1).real
+    ev = ev[ev > tol]
+    E_N = 2.0 * np.log2(np.sum(np.sqrt(ev)))
+    S   = -np.sum(ev * np.log2(ev))
+    return E_N, S
+
+
 def wigner_dm_negativity(rho, xvec, pvec, verbose=False, n_jobs=-1):
     """Wigner de un modo de una matriz densidad ρ (nph×nph) + su negatividad.
        W(α) = (2/π) Σ_n (-1)^n <n|D†(α) ρ D(α)|n>
@@ -221,17 +234,22 @@ def pad_state(psi_ph, nph_old, nph_new):
 
 
 def marginal_negativities_exact(psi_ph, nph, xvec, pvec, nph_wig=56, n_jobs=-1):
-    """δ1, δ2 marginales. Hace padding del estado a nph_wig para Wigner fiel
-       (D(α) unitaria en el borde de la malla) sin encarecer la diagonalización."""
+    """δ1, δ2 marginales + E_N y S del estado bimodal. Hace padding del estado
+       a nph_wig para Wigner fiel (D(α) unitaria en el borde de la malla) sin
+       encarecer la diagonalización."""
     if nph_wig > nph:
         psi_ph = pad_state(psi_ph, nph, nph_wig)
         nph = nph_wig
     pm = psi_ph.reshape(nph, nph)
     rho1 = pm @ pm.conj().T
     rho2 = pm.T @ pm.conj()
+
+    # entrelazamiento inter-cavidad (estado bipartito puro)
+    E_N, S = entanglement_measures_pure(rho1)
+
     d1, n1 = wigner_dm_negativity(rho1, xvec, pvec, n_jobs=n_jobs)
     d2, n2 = wigner_dm_negativity(rho2, xvec, pvec, n_jobs=n_jobs)
-    return d1, d2, n1, n2
+    return d1, d2, n1, n2, E_N, S
 
 
 def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='even'):
@@ -256,7 +274,7 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='e
     return cat
 
 # ══════════════════════════════════════════════════════════════════
-#  EJECUCIÓN — negatividades marginales δ1, δ2 vs θ (Λ fijo, EXACTO sitio)
+#  EJECUCIÓN — δ1, δ2, E_N y S vs θ (Λ fijo, EXACTO en base de sitio)
 #    θ ∈ (0, π);  λ1 = Λcosθ, λ2 = Λsinθ  →  g_i = λ_i·ω0
 #  Paralelizado por θ: cada worker hace su diagonalización + Wigner en serie.
 # ══════════════════════════════════════════════════════════════════
@@ -276,6 +294,7 @@ pvec = np.linspace(-3.0, 3.0, 251)
 
 d1_arr = np.full(nth, np.nan); d2_arr = np.full(nth, np.nan)
 n1_arr = np.full(nth, np.nan); n2_arr = np.full(nth, np.nan)
+EN_arr = np.full(nth, np.nan); S_arr  = np.full(nth, np.nan)
 
 
 def _one_theta(k, th):
@@ -287,22 +306,23 @@ def _one_theta(k, th):
     vec = evec_e[:, 0] if sector == 'even' else evec_o[:, 0]
     psi_ph = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
                                sign=sign, sector=sector)
-    d1, d2, n1, n2 = marginal_negativities_exact(
+    d1, d2, n1, n2, E_N, S = marginal_negativities_exact(
         psi_ph, nph, xvec, pvec, nph_wig=nph_wig, n_jobs=1)   # serial adentro
-    print(f"  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f} "
+    print(f"  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  E_N={E_N:.4f} S={S:.4f}  "
           f"(∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
-    return k, d1, d2, n1, n2
+    return k, d1, d2, n1, n2, E_N, S
 
 
 _res = Parallel(n_jobs=N_JOBS, verbose=10)(
     delayed(_one_theta)(k, th) for k, th in enumerate(theta_arr))
 
-for k, d1, d2, n1, n2 in _res:
+for k, d1, d2, n1, n2, E_N, S in _res:
     d1_arr[k] = d1; d2_arr[k] = d2; n1_arr[k] = n1; n2_arr[k] = n2
+    EN_arr[k] = E_N; S_arr[k] = S
 
 print("Barrido marginal θ (exacto) listo.")
 
 os.makedirs('Resultados_aniso', exist_ok=True)
-_out = np.column_stack([theta_arr, d1_arr, d2_arr, n1_arr, n2_arr])
-np.savetxt(f'Resultados_aniso/marginal_negativity_vs_theta_exact_{Lam_fix}.txt', _out, fmt='%.8e', header='theta  delta1  delta2  norm1  norm2')
+_out = np.column_stack([theta_arr, d1_arr, d2_arr, n1_arr, n2_arr, EN_arr, S_arr])
+np.savetxt(f'Resultados_aniso/marginal_negativity_vs_theta_exact_{Lam_fix}.txt', _out, fmt='%.8e', header='theta  delta1  delta2  norm1  norm2  E_N  S')
 print(f'Guardado: marginal_negativity_vs_theta_exact_{Lam_fix}.txt')
