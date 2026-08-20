@@ -76,12 +76,29 @@ def diagonalize_LF_sweet(M, t, Delta, omega1, omega2, g1, g2):
     return ev_e, evec_e, ev_o, evec_o, nph, n_ph
 
 
-def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='even'):
+def pad_state(psi_ph, nph_old, nph_new):
+    pm = psi_ph.reshape(nph_old, nph_old)
+    pm_new = np.zeros((nph_new, nph_new), dtype=complex)
+    pm_new[:nph_old, :nph_old] = pm
+    return pm_new.reshape(-1)
+
+
+def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
+                      sector='even', nph_out=None):
+    """Gato bimodal exacto. Si nph_out > nph, el estado se padea ANTES de
+       aplicar los desplazamientos, de modo que D(α) sea unitaria en el
+       espacio truncado y no se pierda peso en los Fock altos.
+       Devuelve (cat, nph_final)."""
     lam1 = g1 / omega0
     lam2 = g2 / omega0
 
     phi1 = evec_ex[:n_ph]
     phi2 = evec_ex[n_ph:]
+
+    if nph_out is not None and nph_out > nph:
+        phi1 = pad_state(phi1, nph, nph_out)
+        phi2 = pad_state(phi2, nph, nph_out)
+        nph  = nph_out
 
     D1p = disp_matrix(nph-1, +0.5*lam1); D1m = disp_matrix(nph-1, -0.5*lam1)
     D2p = disp_matrix(nph-1, +0.5*lam2); D2m = disp_matrix(nph-1, -0.5*lam2)
@@ -95,14 +112,7 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='e
 
     cat = Dp @ phi2 + (-sign) * (Dm @ phi1)
     cat /= np.linalg.norm(cat)
-    return cat
-
-
-def pad_state(psi_ph, nph_old, nph_new):
-    pm = psi_ph.reshape(nph_old, nph_old)
-    pm_new = np.zeros((nph_new, nph_new), dtype=complex)
-    pm_new[:nph_old, :nph_old] = pm
-    return pm_new.reshape(-1)
+    return cat, nph
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -116,19 +126,20 @@ nph_wig = 85
 
 g1 = Lam_fix*np.cos(th)
 g2 = Lam_fix*np.sin(th)
-M  = 75
+M  = 55
 
 ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
     M, cv_val, cv_val, omega0, omega0, g1, g2)
-psi_ph = exact_cat_bimodal(g1, g2, evec_e[:, 0], nph, n_ph, omega0,
-                           sign=+1, sector='even')
 
-psi_ph = pad_state(psi_ph, nph, nph_wig)
-pm = psi_ph.reshape(nph_wig, nph_wig)
+# padding ANTES del desplazamiento
+psi_ph, nph_f = exact_cat_bimodal(g1, g2, evec_e[:, 0], nph, n_ph, omega0,
+                                  sign=+1, sector='even', nph_out=nph_wig)
+
+pm = psi_ph.reshape(nph_f, nph_f)
 rho1 = pm @ pm.conj().T
 
 ev = np.sort(np.linalg.eigvalsh(rho1).real)[::-1]
-print("M =", M, " nph =", nph)
+print("M =", M, " nph diagonalización =", nph, " nph final =", nph_f)
 print("traza rho1 =", ev.sum())
 print("10 mayores autovalores de rho1:")
 for i, v in enumerate(ev[:10]):
