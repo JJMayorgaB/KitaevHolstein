@@ -1,32 +1,18 @@
 import numpy as np
 from scipy.special import factorial, eval_genlaguerre
 from scipy.optimize import minimize
-from scipy.linalg import eigh4
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-from matplotlib.colors import TwoSlopeNorm
+from scipy.linalg import eigh
 from joblib import Parallel, delayed
 import contextlib, joblib
 
-from matplotlib.gridspec import GridSpec
-from matplotlib.ticker import MaxNLocator
 import warnings
 from math import comb as _C
-from matplotlib.ticker import PercentFormatter
 warnings.filterwarnings('ignore')
-from matplotlib.cm import ScalarMappable
-import matplotlib.lines as mlines
-import matplotlib.colors as colors
 import os
 from scipy.interpolate import RegularGridInterpolator
-import matplotlib.ticker as ticker
 from scipy.signal import savgol_filter
 from scipy.interpolate import UnivariateSpline
 from scipy.ndimage import gaussian_filter
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.gridspec as gridspec
 
 
 def get_M_CM(lam1, lam2, M_max=12):
