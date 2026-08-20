@@ -1,14 +1,15 @@
 import numpy as np
 from scipy.special import factorial, eval_genlaguerre
 from scipy.optimize import minimize
-from scipy.linalg import eigh
+from scipy.linalg import eigh4
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.colors import TwoSlopeNorm
 from joblib import Parallel, delayed
 import contextlib, joblib
-from tqdm.auto import tqdm
-import qutip as qt
+
 from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import MaxNLocator
 import warnings
@@ -26,22 +27,6 @@ from scipy.interpolate import UnivariateSpline
 from scipy.ndimage import gaussian_filter
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.gridspec as gridspec
-
-@contextlib.contextmanager
-def tqdm_joblib(tqdm_object):
-    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-        def __call__(self, *args, **kwargs):
-            tqdm_object.update(n=self.batch_size)
-            return super().__call__(*args, **kwargs)
-    old = joblib.parallel.BatchCompletionCallBack
-    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
-    try:
-        yield tqdm_object
-    finally:
-        joblib.parallel.BatchCompletionCallBack = old
-        tqdm_object.close()
 
 
 def get_M_CM(lam1, lam2, M_max=12):
@@ -266,8 +251,8 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='e
     phi1 = evec_ex[:n_ph]
     phi2 = evec_ex[n_ph:]
 
-    D1p = disp_matrix(M, +0.5*lam1); D1m = disp_matrix(M, -0.5*lam1)
-    D2p = disp_matrix(M, +0.5*lam2); D2m = disp_matrix(M, -0.5*lam2)
+    D1p = disp_matrix(nph-1, +0.5*lam1); D1m = disp_matrix(nph-1, -0.5*lam1)
+    D2p = disp_matrix(nph-1, +0.5*lam2); D2m = disp_matrix(nph-1, -0.5*lam2)
 
     if sector == 'even':
         Dp = np.kron(D1p, D2p)   # φ2: (+λ1/2, +λ2/2)
