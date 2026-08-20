@@ -1,3 +1,8 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import numpy as np
 from scipy.special import factorial, eval_genlaguerre
 from scipy.optimize import minimize
@@ -8,7 +13,6 @@ import contextlib, joblib
 import warnings
 from math import comb as _C
 warnings.filterwarnings('ignore')
-import os
 from scipy.interpolate import RegularGridInterpolator
 from scipy.signal import savgol_filter
 from scipy.interpolate import UnivariateSpline
@@ -254,15 +258,17 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='e
 # ══════════════════════════════════════════════════════════════════
 #  EJECUCIÓN — negatividades marginales δ1, δ2 vs θ (Λ fijo, EXACTO sitio)
 #    θ ∈ (0, π);  λ1 = Λcosθ, λ2 = Λsinθ  →  g_i = λ_i·ω0
+#  Paralelizado por θ: cada worker hace su diagonalización + Wigner en serie.
 # ══════════════════════════════════════════════════════════════════
 omega0   = 1.0
 cv_val   = 1.0
 Lam_fix  = 3*np.sqrt(2)       # Λ fijo
 sector   = 'even'
 sign     = +1
-nph_wig  = 85              
+nph_wig  = 85
+N_JOBS   = 64                 # cores a usar
 
-nth      = 1
+nth      = 64
 theta_arr = np.linspace(0.0, np.pi, nth)
 
 xvec = np.linspace(-4.2, 4.2, 251)
@@ -271,21 +277,28 @@ pvec = np.linspace(-3.0, 3.0, 251)
 d1_arr = np.full(nth, np.nan); d2_arr = np.full(nth, np.nan)
 n1_arr = np.full(nth, np.nan); n2_arr = np.full(nth, np.nan)
 
-_step10 = max(1, nth // 10)
-for k, th in enumerate(theta_arr):
+
+def _one_theta(k, th):
     g1 = Lam_fix * np.cos(th)
     g2 = Lam_fix * np.sin(th)
-    M = min(MofLam_sweet_exact(g1, g2, omega0=omega0, M_cap=45) + 25, 55)   # M de diagonalización (barato)
-    ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(M, cv_val, cv_val, omega0, omega0, g1, g2)
+    M = min(MofLam_sweet_exact(g1, g2, omega0=omega0, M_cap=45) + 25, 55)
+    ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
+        M, cv_val, cv_val, omega0, omega0, g1, g2)
     vec = evec_e[:, 0] if sector == 'even' else evec_o[:, 0]
-    psi_ph = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0, sign=sign, sector=sector)
+    psi_ph = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
+                               sign=sign, sector=sector)
+    d1, d2, n1, n2 = marginal_negativities_exact(
+        psi_ph, nph, xvec, pvec, nph_wig=nph_wig, n_jobs=1)   # serial adentro
+    print(f"  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f} "
+          f"(∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
+    return k, d1, d2, n1, n2
 
-    # marginal con padding a nph_wig para Wigner fiel
-    d1_arr[k], d2_arr[k], n1_arr[k], n2_arr[k] = marginal_negativities_exact(psi_ph, nph, xvec, pvec, nph_wig=nph_wig)
-    if k == 0:
-        print(f" θ={th:5.3f}  δ1={d1_arr[k]:.4f} δ2={d2_arr[k]:.4f} " f"(∫W1={n1_arr[k]:.3f}, ∫W2={n2_arr[k]:.3f})", flush=True)
-    if (k+1) % _step10 == 0 or (k+1) == nth:
-        print(f"  {100.0*(k+1)/nth:5.1f}%  θ={th:5.3f}  " f"δ1={d1_arr[k]:.4f} δ2={d2_arr[k]:.4f} " f"(∫W1={n1_arr[k]:.3f}, ∫W2={n2_arr[k]:.3f})", flush=True)
+
+_res = Parallel(n_jobs=N_JOBS, verbose=10)(
+    delayed(_one_theta)(k, th) for k, th in enumerate(theta_arr))
+
+for k, d1, d2, n1, n2 in _res:
+    d1_arr[k] = d1; d2_arr[k] = d2; n1_arr[k] = n1; n2_arr[k] = n2
 
 print("Barrido marginal θ (exacto) listo.")
 
