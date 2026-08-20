@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Salidas numéricas
+Resultados/
+Resultados_aniso/
+Observables_Variacional/
+output_dir_*/
+output_appendix_*/
+variational_params_*/
+cat_state_variational_params_*/
+spectraldensity/
+spectraldensity*/
+
+# Figuras
+figures/
+paper_figures/
+
+# Archivos de datos sueltos
+*.npy
+*.txt
