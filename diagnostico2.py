@@ -100,6 +100,12 @@ for tag, p in [("phi1", p1), ("phi2", p2)]:
     print(f"      poblacion modo 1 en n=nph-1: {np.sum(np.abs(p[-1,:])**2):.6e}")
     print(f"      poblacion modo 2 en n=nph-1: {np.sum(np.abs(p[:,-1])**2):.6e}")
 
+# ── ¿son phi1/phi2 el vacío exacto? ──
+print(f"\nphi1[0,0] = {p1[0,0]:.8e}   |phi1[0,0]|^2 = {abs(p1[0,0])**2:.8e}")
+print(f"phi2[0,0] = {p2[0,0]:.8e}   |phi2[0,0]|^2 = {abs(p2[0,0])**2:.8e}")
+print(f"peso fuera del vacio, phi1: {0.5 - abs(p1[0,0])**2:.6e}")
+print(f"peso fuera del vacio, phi2: {0.5 - abs(p2[0,0])**2:.6e}")
+
 phi1 = pad_state(vec[:n_ph],  nph, nph_f)
 
 phi2 = pad_state(vec[n_ph:],  nph, nph_f)
@@ -157,3 +163,4 @@ for i, v in enumerate(ev[:4]):
     print(f"  lam_{i} = {v:.6e}")
 print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
 print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
+
