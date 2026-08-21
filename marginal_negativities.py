@@ -318,7 +318,7 @@ if __name__ == "__main__":
     def _one_theta(k, th):
         g1 = Lam_fix * np.cos(th)
         g2 = Lam_fix * np.sin(th)
-        M = min(MofLam_sweet_exact(g1, g2, omega0=omega0, M_cap=45) + 25, 55)
+        M = 75
         ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
             M, cv_val, cv_val, omega0, omega0, g1, g2)
         vec = evec_e[:, 0] if sector == 'even' else evec_o[:, 0]
