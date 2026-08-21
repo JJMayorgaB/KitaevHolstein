@@ -133,3 +133,27 @@ for tag, cm in [("exacto", cat_ex), ("coherente ideal", cat_id)]:
         print(f"  lam_{i} = {v:.6e}")
     print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
     print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  TEST — misma construcción, pero con phi1/phi2 idealizados
+#  En frame LF a acoplamiento fuerte, cada componente debería ser
+#  el vacío de dos modos (normalizado a 1/√2 como en el exacto)
+# ══════════════════════════════════════════════════════════════════
+P1_id = np.zeros((nph_f, nph_f), dtype=complex)
+P2_id = np.zeros((nph_f, nph_f), dtype=complex)
+P1_id[0, 0] = 1.0/np.sqrt(2)
+P2_id[0, 0] = 1.0/np.sqrt(2)
+
+cat_test = (D1p @ P2_id @ D2p.T) + (-sign)*(D1m @ P1_id @ D2m.T)
+cat_test /= np.linalg.norm(cat_test)
+
+rho1 = cat_test @ cat_test.conj().T
+ev = np.sort(np.linalg.eigvalsh(rho1).real)[::-1]
+s = np.sqrt(ev[ev > 1e-12]); lam = s**2
+
+print("\n--- construccion con phi ideal (vacio LF) ---")
+for i, v in enumerate(ev[:4]):
+    print(f"  lam_{i} = {v:.6e}")
+print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
+print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
