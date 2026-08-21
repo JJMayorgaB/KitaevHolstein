@@ -164,3 +164,10 @@ for i, v in enumerate(ev[:4]):
 print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
 print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
 
+# ── ¿es disp_matrix unitaria? ──
+I = np.eye(nph_f)
+for tag, a in [("lam1", lam1), ("lam2", lam2),
+               ("b1", b1), ("b2", b2)]:
+    D = disp_matrix(nph_f-1, a)
+    print(f"alpha = {a:7.4f} ({tag}):  ||D^T D - I|| = "
+          f"{np.linalg.norm(D.T @ D - I):.6e}")
