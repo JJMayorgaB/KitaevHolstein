@@ -179,16 +179,19 @@ def reduced_dm_mode_exact(psi_ph, nph, mode):
 
 
 def entanglement_measures_pure(rho1, tol=1e-12):
-    """Para un estado bipartito PURO: negatividad logarítmica y entropía de
-       von Neumann, ambas del espectro de Schmidt {λ_i} = eig(ρ1).
+    """Para un estado bipartito PURO: negatividad logarítmica, entropía de
+       von Neumann y rango efectivo, todas del espectro de Schmidt de ρ1.
          E_N = log2 ||ρ^{T_2}||_1 = 2 log2( Σ_i sqrt(λ_i) )
          S   = -Σ_i λ_i log2 λ_i
-       Ambas saturan en 1 ebit para el gato bimodal (rango de Schmidt 2)."""
+       Nota: en la partición de SITIO el rango no está acotado a 2 —la rotación
+       desde los modos colectivos reparte ambos modos entre las cavidades—, de
+       modo que E_N y S pueden exceder 1 ebit."""
     ev = np.linalg.eigvalsh(rho1).real
     ev = ev[ev > tol]
     E_N = 2.0 * np.log2(np.sum(np.sqrt(ev)))
     S   = -np.sum(ev * np.log2(ev))
-    return E_N, S
+    rank_eff = int(np.sum(ev > 1e-4))
+    return E_N, S, rank_eff
 
 
 def wigner_dm_negativity(rho, xvec, pvec, verbose=False, n_jobs=-1):
@@ -233,96 +236,121 @@ def pad_state(psi_ph, nph_old, nph_new):
     return pm_new.reshape(-1)
 
 
-def marginal_negativities_exact(psi_ph, nph, xvec, pvec, nph_wig=56, n_jobs=-1):
-    """δ1, δ2 marginales + E_N y S del estado bimodal. Hace padding del estado
-       a nph_wig para Wigner fiel (D(α) unitaria en el borde de la malla) sin
-       encarecer la diagonalización."""
-    if nph_wig > nph:
-        psi_ph = pad_state(psi_ph, nph, nph_wig)
-        nph = nph_wig
+def marginal_negativities_exact(psi_ph, nph, xvec, pvec, n_jobs=-1):
+    """δ1, δ2 marginales + E_N, S y rango efectivo. El estado llega ya con la
+       dimensión final (el padding se hace en exact_cat_bimodal, antes de los
+       desplazamientos)."""
     pm = psi_ph.reshape(nph, nph)
     rho1 = pm @ pm.conj().T
     rho2 = pm.T @ pm.conj()
 
     # entrelazamiento inter-cavidad (estado bipartito puro)
-    E_N, S = entanglement_measures_pure(rho1)
+    E_N, S, rank_eff = entanglement_measures_pure(rho1)
 
     d1, n1 = wigner_dm_negativity(rho1, xvec, pvec, n_jobs=n_jobs)
     d2, n2 = wigner_dm_negativity(rho2, xvec, pvec, n_jobs=n_jobs)
-    return d1, d2, n1, n2, E_N, S
+    return d1, d2, n1, n2, E_N, S, rank_eff
 
 
-def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1, sector='even'):
+def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
+                      sector='even', nph_out=None):
+    """Gato bimodal exacto en base de sitio.
+       El padding a nph_out se hace ANTES de aplicar los desplazamientos, para
+       que D(α) no trunque la cola del estado desplazado.
+       Usa vec(A X B^T) = (A⊗B) vec(X) para evitar construir los kron.
+       Devuelve (cat, nph_final)."""
     lam1 = g1 / omega0
     lam2 = g2 / omega0
 
     phi1 = evec_ex[:n_ph]
     phi2 = evec_ex[n_ph:]
 
+    if nph_out is not None and nph_out > nph:
+        phi1 = pad_state(phi1, nph, nph_out)
+        phi2 = pad_state(phi2, nph, nph_out)
+        nph  = nph_out
+
     D1p = disp_matrix(nph-1, +0.5*lam1); D1m = disp_matrix(nph-1, -0.5*lam1)
     D2p = disp_matrix(nph-1, +0.5*lam2); D2m = disp_matrix(nph-1, -0.5*lam2)
 
-    if sector == 'even':
-        Dp = np.kron(D1p, D2p)   # φ2: (+λ1/2, +λ2/2)
-        Dm = np.kron(D1m, D2m)   # φ1: (-λ1/2, -λ2/2)
-    else:  # 'odd'
-        Dp = np.kron(D1p, D2m)   # φ2: (+λ1/2, -λ2/2)
-        Dm = np.kron(D1m, D2p)   # φ1: (-λ1/2, +λ2/2)
+    P1 = phi1.reshape(nph, nph)
+    P2 = phi2.reshape(nph, nph)
 
-    cat = Dp @ phi2 + (-sign) * (Dm @ phi1)
+    if sector == 'even':          # φ2: (+λ1/2, +λ2/2)   φ1: (-λ1/2, -λ2/2)
+        catm = (D1p @ P2 @ D2p.T) + (-sign)*(D1m @ P1 @ D2m.T)
+    else:                         # φ2: (+λ1/2, -λ2/2)   φ1: (-λ1/2, +λ2/2)
+        catm = (D1p @ P2 @ D2m.T) + (-sign)*(D1m @ P1 @ D2p.T)
+
+    cat = catm.reshape(-1)
     cat /= np.linalg.norm(cat)
-    return cat
+    return cat, nph
 
 # ══════════════════════════════════════════════════════════════════
 #  EJECUCIÓN — δ1, δ2, E_N y S vs θ (Λ fijo, EXACTO en base de sitio)
 #    θ ∈ (0, π);  λ1 = Λcosθ, λ2 = Λsinθ  →  g_i = λ_i·ω0
 #  Paralelizado por θ: cada worker hace su diagonalización + Wigner en serie.
 # ══════════════════════════════════════════════════════════════════
-omega0   = 1.0
-cv_val   = 1.0
-Lam_fix  = 3*np.sqrt(2)       # Λ fijo
-sector   = 'even'
-sign     = +1
-nph_wig  = 85
-N_JOBS   = 64                 # cores a usar
+if __name__ == "__main__":
 
-nth      = 64
-theta_arr = np.linspace(0.0, np.pi, nth)
+    omega0   = 1.0
+    cv_val   = 1.0
+    Lam_fix  = 3*np.sqrt(2)       # Λ fijo
+    sector   = 'even'
+    sign     = +1
+    nph_wig  = 85
+    N_JOBS   = 64                 # cores a usar
 
-xvec = np.linspace(-4.2, 4.2, 251)
-pvec = np.linspace(-3.0, 3.0, 251)
+    nth      = 64
+    theta_arr = np.linspace(0.0, np.pi, nth)
 
-d1_arr = np.full(nth, np.nan); d2_arr = np.full(nth, np.nan)
-n1_arr = np.full(nth, np.nan); n2_arr = np.full(nth, np.nan)
-EN_arr = np.full(nth, np.nan); S_arr  = np.full(nth, np.nan)
+    xvec = np.linspace(-4.2, 4.2, 251)
+    pvec = np.linspace(-3.0, 3.0, 251)
 
+    OUTDIR = 'Resultados_aniso'
+    TMPDIR = os.path.join(OUTDIR, f'_tmp_exact_{Lam_fix:.6f}')
+    os.makedirs(TMPDIR, exist_ok=True)
 
-def _one_theta(k, th):
-    g1 = Lam_fix * np.cos(th)
-    g2 = Lam_fix * np.sin(th)
-    M = min(MofLam_sweet_exact(g1, g2, omega0=omega0, M_cap=45) + 25, 55)
-    ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
-        M, cv_val, cv_val, omega0, omega0, g1, g2)
-    vec = evec_e[:, 0] if sector == 'even' else evec_o[:, 0]
-    psi_ph = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
-                               sign=sign, sector=sector)
-    d1, d2, n1, n2, E_N, S = marginal_negativities_exact(
-        psi_ph, nph, xvec, pvec, nph_wig=nph_wig, n_jobs=1)   # serial adentro
-    print(f"  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  E_N={E_N:.4f} S={S:.4f}  "
-          f"(∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
-    return k, d1, d2, n1, n2, E_N, S
+    d1_arr = np.full(nth, np.nan); d2_arr = np.full(nth, np.nan)
+    n1_arr = np.full(nth, np.nan); n2_arr = np.full(nth, np.nan)
+    EN_arr = np.full(nth, np.nan); S_arr  = np.full(nth, np.nan)
+    rk_arr = np.full(nth, np.nan)
 
+    def _one_theta(k, th):
+        g1 = Lam_fix * np.cos(th)
+        g2 = Lam_fix * np.sin(th)
+        M = min(MofLam_sweet_exact(g1, g2, omega0=omega0, M_cap=45) + 25, 55)
+        ev_e, evec_e, ev_o, evec_o, nph, n_ph = diagonalize_LF_sweet(
+            M, cv_val, cv_val, omega0, omega0, g1, g2)
+        vec = evec_e[:, 0] if sector == 'even' else evec_o[:, 0]
 
-_res = Parallel(n_jobs=N_JOBS, verbose=10)(
-    delayed(_one_theta)(k, th) for k, th in enumerate(theta_arr))
+        # padding ANTES de los desplazamientos
+        psi_ph, nph_f = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
+                                          sign=sign, sector=sector,
+                                          nph_out=nph_wig)
 
-for k, d1, d2, n1, n2, E_N, S in _res:
-    d1_arr[k] = d1; d2_arr[k] = d2; n1_arr[k] = n1; n2_arr[k] = n2
-    EN_arr[k] = E_N; S_arr[k] = S
+        d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(
+            psi_ph, nph_f, xvec, pvec, n_jobs=1)   # serial adentro
 
-print("Barrido marginal θ (exacto) listo.")
+        # guardado incremental: si el job muere, no se pierde lo avanzado
+        np.savetxt(os.path.join(TMPDIR, f'{k:03d}.txt'),
+                   np.array([[th, d1, d2, n1, n2, E_N, S, rk]]), fmt='%.8e')
 
-os.makedirs('Resultados_aniso', exist_ok=True)
-_out = np.column_stack([theta_arr, d1_arr, d2_arr, n1_arr, n2_arr, EN_arr, S_arr])
-np.savetxt(f'Resultados_aniso/marginal_negativity_vs_theta_exact_{Lam_fix}.txt', _out, fmt='%.8e', header='theta  delta1  delta2  norm1  norm2  E_N  S')
-print(f'Guardado: marginal_negativity_vs_theta_exact_{Lam_fix}.txt')
+        print(f"  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  E_N={E_N:.4f} S={S:.4f}  "
+              f"rank={rk}  (∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
+        return k, d1, d2, n1, n2, E_N, S, rk
+
+    _res = Parallel(n_jobs=N_JOBS, verbose=10)(
+        delayed(_one_theta)(k, th) for k, th in enumerate(theta_arr))
+
+    for k, d1, d2, n1, n2, E_N, S, rk in _res:
+        d1_arr[k] = d1; d2_arr[k] = d2; n1_arr[k] = n1; n2_arr[k] = n2
+        EN_arr[k] = E_N; S_arr[k] = S; rk_arr[k] = rk
+
+    print("Barrido marginal θ (exacto) listo.")
+
+    _out = np.column_stack([theta_arr, d1_arr, d2_arr, n1_arr, n2_arr,
+                            EN_arr, S_arr, rk_arr])
+    np.savetxt(f'{OUTDIR}/marginal_negativity_vs_theta_exact_{Lam_fix}.txt',
+               _out, fmt='%.8e',
+               header='theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff')
+    print(f'Guardado: marginal_negativity_vs_theta_exact_{Lam_fix}.txt')
