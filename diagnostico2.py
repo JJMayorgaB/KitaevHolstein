@@ -1,12 +1,13 @@
 import os
 import numpy as np
 from scipy.special import factorial, eval_genlaguerre
-from scipy.linalg import eigh
+from scipy.linalg import eigh, expm
 import warnings
 warnings.filterwarnings('ignore')
 
 
-def disp_matrix(M_ph, alpha):
+def disp_matrix_lag(M_ph, alpha):
+    """Versión Laguerre (la actual)."""
     N      = M_ph + 1
     alpha2 = alpha * alpha
     gauss  = np.exp(-0.5 * alpha2)
@@ -23,6 +24,17 @@ def disp_matrix(M_ph, alpha):
                 pref = gauss * ((-alpha)**k) * np.sqrt(facts[mp] / facts[n])
                 D[mp, n] = pref * eval_genlaguerre(mp, k, alpha2)
     return D
+
+
+def disp_matrix_expm(M_ph, alpha):
+    """D(α) = exp[α(a† − a)] por exponenciación del generador."""
+    N = M_ph + 1
+    a = np.diag(np.sqrt(np.arange(1, N)), 1)
+    return expm(alpha*(a.T - a))
+
+
+# ── selector global: cambia aquí para probar una u otra ──
+disp_matrix = disp_matrix_expm     # o disp_matrix_lag
 
 
 def build_LF_hamiltonians_sweet(M, t, Delta, omega1, omega2, g1, g2):
@@ -61,16 +73,6 @@ def pad_state(psi_ph, nph_old, nph_new):
     return pm_new.reshape(-1)
 
 
-def coherent_vec(N, alpha):
-    n = np.arange(N)
-    logfact = np.concatenate([[0.0], np.cumsum(np.log(np.arange(1, N)))])
-    logc = -0.5*abs(alpha)**2 + n*np.log(alpha + 0j) - 0.5*logfact
-    v = np.exp(logc)
-    return v / np.linalg.norm(v)
-
-
-# ══════════════════════════════════════════════════════════════════
-#  Estado exacto vs gato de coherentes ideal
 # ══════════════════════════════════════════════════════════════════
 omega0  = 1.0
 cv_val  = 1.0
@@ -84,90 +86,52 @@ g1 = Lam_fix*np.cos(th); g2 = Lam_fix*np.sin(th)
 lam1 = g1/omega0;        lam2 = g2/omega0
 b1   = 0.5*lam1;         b2   = 0.5*lam2
 
-# --- estado exacto ---
-H_e, H_o, nph, n_ph = build_LF_hamiltonians_sweet(
-    M, cv_val, cv_val, omega0, omega0, g1, g2)
-ev_e, evec_e = eigh(H_e)
-vec = evec_e[:, 0]
+# ══════════════════════════════════════════════════════════════════
+#  TEST DE UNITARIEDAD — ambas versiones, varias dimensiones
+# ══════════════════════════════════════════════════════════════════
+print("=== unitariedad ||D^T D - I|| ===")
+print(f"{'alpha':>8}  {'N':>5}  {'Laguerre':>14}  {'expm':>14}")
+for a, tag in [(b1,'b1'), (b2,'b2'), (lam1,'lam1'), (lam2,'lam2')]:
+    for N in [M+1, nph_f]:
+        I = np.eye(N)
+        DL = disp_matrix_lag(N-1, a)
+        DE = disp_matrix_expm(N-1, a)
+        eL = np.linalg.norm(DL.T @ DL - I)
+        eE = np.linalg.norm(DE.T @ DE - I)
+        print(f"{a:8.4f}  {N:5d}  {eL:14.6e}  {eE:14.6e}   ({tag})")
 
-# ── diagnóstico de truncación: peso cerca del borde de Fock ──
-p1 = vec[:n_ph].reshape(nph, nph)
-p2 = vec[n_ph:].reshape(nph, nph)
-for tag, p in [("phi1", p1), ("phi2", p2)]:
-    print(f"{tag}: peso total = {np.sum(np.abs(p)**2):.6e}")
-    print(f"      ultimas 5 filas/cols = "
-          f"{np.sum(np.abs(p[-5:,:])**2) + np.sum(np.abs(p[:,-5:])**2):.6e}")
-    print(f"      poblacion modo 1 en n=nph-1: {np.sum(np.abs(p[-1,:])**2):.6e}")
-    print(f"      poblacion modo 2 en n=nph-1: {np.sum(np.abs(p[:,-1])**2):.6e}")
+# ══════════════════════════════════════════════════════════════════
+#  ESPECTRO DE SCHMIDT — con cada versión
+# ══════════════════════════════════════════════════════════════════
+for name, dm in [("Laguerre", disp_matrix_lag), ("expm", disp_matrix_expm)]:
+    globals()['disp_matrix'] = dm
 
-# ── ¿son phi1/phi2 el vacío exacto? ──
-print(f"\nphi1[0,0] = {p1[0,0]:.8e}   |phi1[0,0]|^2 = {abs(p1[0,0])**2:.8e}")
-print(f"phi2[0,0] = {p2[0,0]:.8e}   |phi2[0,0]|^2 = {abs(p2[0,0])**2:.8e}")
-print(f"peso fuera del vacio, phi1: {0.5 - abs(p1[0,0])**2:.6e}")
-print(f"peso fuera del vacio, phi2: {0.5 - abs(p2[0,0])**2:.6e}")
+    H_e, H_o, nph, n_ph = build_LF_hamiltonians_sweet(
+        M, cv_val, cv_val, omega0, omega0, g1, g2)
+    ev_e, evec_e = eigh(H_e)
+    vec = evec_e[:, 0]
 
-phi1 = pad_state(vec[:n_ph],  nph, nph_f)
+    p1 = vec[:n_ph].reshape(nph, nph)
+    peso_fuera = 0.5 - abs(p1[0,0])**2
 
-phi2 = pad_state(vec[n_ph:],  nph, nph_f)
-P1 = phi1.reshape(nph_f, nph_f); P2 = phi2.reshape(nph_f, nph_f)
+    phi1 = pad_state(vec[:n_ph], nph, nph_f)
+    phi2 = pad_state(vec[n_ph:], nph, nph_f)
+    P1 = phi1.reshape(nph_f, nph_f); P2 = phi2.reshape(nph_f, nph_f)
 
-D1p = disp_matrix(nph_f-1, +b1); D1m = disp_matrix(nph_f-1, -b1)
-D2p = disp_matrix(nph_f-1, +b2); D2m = disp_matrix(nph_f-1, -b2)
+    D1p = dm(nph_f-1, +b1); D1m = dm(nph_f-1, -b1)
+    D2p = dm(nph_f-1, +b2); D2m = dm(nph_f-1, -b2)
 
-cat_ex = (D1p @ P2 @ D2p.T) + (-sign)*(D1m @ P1 @ D2m.T)
-cat_ex /= np.linalg.norm(cat_ex)
+    catm = (D1p @ P2 @ D2p.T) + (-sign)*(D1m @ P1 @ D2m.T)
+    catm /= np.linalg.norm(catm)
 
-# --- gato de coherentes ideal ---
-u_p = coherent_vec(nph_f, +b1); v_p = coherent_vec(nph_f, +b2)
-u_m = coherent_vec(nph_f, -b1); v_m = coherent_vec(nph_f, -b2)
-cat_id = np.outer(u_p, v_p) + (-sign)*np.outer(u_m, v_m)
-cat_id /= np.linalg.norm(cat_id)
-
-# --- fidelidad ---
-F = abs(np.vdot(cat_id.reshape(-1), cat_ex.reshape(-1)))**2
-print(f"beta1 = {b1:.4f}   beta2 = {b2:.4f}")
-print(f"\nF = |<Cat_coh|Cat_exact>|^2 = {F:.8f}")
-print(f"1 - F                       = {1-F:.6e}")
-
-# --- espectros ---
-for tag, cm in [("exacto", cat_ex), ("coherente ideal", cat_id)]:
-    rho1 = cm @ cm.conj().T
+    rho1 = catm @ catm.conj().T
     ev = np.sort(np.linalg.eigvalsh(rho1).real)[::-1]
     s = np.sqrt(ev[ev > 1e-12]); lam = s**2
-    print(f"\n--- {tag} ---")
-    for i, v in enumerate(ev[:4]):
+
+    print(f"\n=== {name} ===")
+    print(f"  peso fuera del vacio (phi1) = {peso_fuera:.6e}")
+    print(f"  traza rho1 = {ev.sum():.12f}")
+    for i, v in enumerate(ev[:6]):
         print(f"  lam_{i} = {v:.6e}")
-    print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
     print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
-
-
-# ══════════════════════════════════════════════════════════════════
-#  TEST — misma construcción, pero con phi1/phi2 idealizados
-#  En frame LF a acoplamiento fuerte, cada componente debería ser
-#  el vacío de dos modos (normalizado a 1/√2 como en el exacto)
-# ══════════════════════════════════════════════════════════════════
-P1_id = np.zeros((nph_f, nph_f), dtype=complex)
-P2_id = np.zeros((nph_f, nph_f), dtype=complex)
-P1_id[0, 0] = 1.0/np.sqrt(2)
-P2_id[0, 0] = 1.0/np.sqrt(2)
-
-cat_test = (D1p @ P2_id @ D2p.T) + (-sign)*(D1m @ P1_id @ D2m.T)
-cat_test /= np.linalg.norm(cat_test)
-
-rho1 = cat_test @ cat_test.conj().T
-ev = np.sort(np.linalg.eigvalsh(rho1).real)[::-1]
-s = np.sqrt(ev[ev > 1e-12]); lam = s**2
-
-print("\n--- construccion con phi ideal (vacio LF) ---")
-for i, v in enumerate(ev[:4]):
-    print(f"  lam_{i} = {v:.6e}")
-print(f"  lam_2 + lam_3 = {ev[2]+ev[3]:.6e}")
-print(f"  E_N = {2*np.log2(np.sum(s)):.4f}   S = {-np.sum(lam*np.log2(lam)):.4f}")
-
-# ── ¿es disp_matrix unitaria? ──
-I = np.eye(nph_f)
-for tag, a in [("lam1", lam1), ("lam2", lam2),
-               ("b1", b1), ("b2", b2)]:
-    D = disp_matrix(nph_f-1, a)
-    print(f"alpha = {a:7.4f} ({tag}):  ||D^T D - I|| = "
-          f"{np.linalg.norm(D.T @ D - I):.6e}")
+    print(f"  rango efectivo (>1e-4): {np.sum(ev > 1e-4)}")
