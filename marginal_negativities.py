@@ -294,11 +294,11 @@ if __name__ == "__main__":
 
     omega0   = 1.0
     cv_val   = 1.0
-    Lam_fix  = 3*np.sqrt(2)       # Λ fijo
+    Lam_fix  = 2*np.sqrt(2)       # Λ fijo
     sector   = 'even'
     sign     = +1
     nph_wig  = 85
-    N_JOBS   = 64                 # cores a usar
+    N_JOBS   = 32                 # cores a usar
 
     nth      = 64
     theta_arr = np.linspace(0.0, np.pi, nth)
