@@ -10,13 +10,23 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-from scipy.linalg import expm
-
 def disp_matrix(M_ph, alpha):
-    """D(α) = exp[α(a† − a)] por exponenciación del generador (unitaria)."""
-    N = M_ph + 1
-    a = np.diag(np.sqrt(np.arange(1, N)), 1)
-    return expm(alpha*(a.T - a))
+    N      = M_ph + 1
+    alpha2 = alpha * alpha
+    gauss  = np.exp(-0.5 * alpha2)
+    facts  = np.array([float(factorial(k, exact=True)) for k in range(N)])
+    D = np.zeros((N, N))
+    for mp in range(N):
+        for n in range(N):
+            if mp >= n:
+                k    = mp - n
+                pref = gauss * (alpha**k) * np.sqrt(facts[n] / facts[mp])
+                D[mp, n] = pref * eval_genlaguerre(n, k, alpha2)
+            else:
+                k    = n - mp
+                pref = gauss * ((-alpha)**k) * np.sqrt(facts[mp] / facts[n])
+                D[mp, n] = pref * eval_genlaguerre(mp, k, alpha2)
+    return D
 
 
 def MofLam_sweet_exact(g1, g2, omega0=1.0, n_sigma=4, floor=15, M_cap=55):
@@ -110,7 +120,7 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
 # ══════════════════════════════════════════════════════════════════
 omega0  = 1.0
 cv_val  = 1.0
-Lam_fix = 3*np.sqrt(2)
+Lam_fix = 4*np.sqrt(2)
 th      = 1.047
 nph_wig = 100
 
