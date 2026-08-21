@@ -90,7 +90,18 @@ H_e, H_o, nph, n_ph = build_LF_hamiltonians_sweet(
 ev_e, evec_e = eigh(H_e)
 vec = evec_e[:, 0]
 
+# ── diagnóstico de truncación: peso cerca del borde de Fock ──
+p1 = vec[:n_ph].reshape(nph, nph)
+p2 = vec[n_ph:].reshape(nph, nph)
+for tag, p in [("phi1", p1), ("phi2", p2)]:
+    print(f"{tag}: peso total = {np.sum(np.abs(p)**2):.6e}")
+    print(f"      ultimas 5 filas/cols = "
+          f"{np.sum(np.abs(p[-5:,:])**2) + np.sum(np.abs(p[:,-5:])**2):.6e}")
+    print(f"      poblacion modo 1 en n=nph-1: {np.sum(np.abs(p[-1,:])**2):.6e}")
+    print(f"      poblacion modo 2 en n=nph-1: {np.sum(np.abs(p[:,-1])**2):.6e}")
+
 phi1 = pad_state(vec[:n_ph],  nph, nph_f)
+
 phi2 = pad_state(vec[n_ph:],  nph, nph_f)
 P1 = phi1.reshape(nph_f, nph_f); P2 = phi2.reshape(nph_f, nph_f)
 
