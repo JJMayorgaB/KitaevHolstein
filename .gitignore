@@ -23,3 +23,7 @@ paper_figures/
 # Archivos de datos sueltos
 *.npy
 *.txt
+
+# Temporal files
+_tmp/
+_tmp_*/
