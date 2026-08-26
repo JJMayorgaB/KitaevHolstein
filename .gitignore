@@ -26,4 +26,6 @@ paper_figures/
 
 # Temporal files
 _tmp/
+_tmp_*/_tmp/
 _tmp_*/
+*.log
