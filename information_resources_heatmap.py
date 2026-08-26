@@ -138,10 +138,10 @@ if __name__ == "__main__":
     sign     = +1
     N_FOCK   = 50
     r_thresh = 1e-5
-    N_JOBS   = 64
+    N_JOBS   = 120
 
-    nLam = 30
-    nth  = 30
+    nLam = 32
+    nth  = 32
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
@@ -195,3 +195,5 @@ if __name__ == "__main__":
 
     print(f'Guardado en {OUTDIR}/')
     print(f'  min ∫W1 = {np.nanmin(n1_map):.4f}   min ∫W2 = {np.nanmin(n2_map):.4f}')
+
+#vim test writing 
