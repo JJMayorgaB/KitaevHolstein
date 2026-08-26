@@ -137,8 +137,8 @@ if __name__ == "__main__":
     r_thresh = 1e-5
     N_JOBS   = 120
 
-    nLam = 32
-    nth  = 32
+    nLam = 200
+    nth  = 200
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
