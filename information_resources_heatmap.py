@@ -120,17 +120,14 @@ def entanglement_measures_var(psi, N, tol=1e-12):
     return E_N, S
 
 
-def wigner_grid(Lam, n_x=301, n_p=251, x_pad=2.5, p_half=3.0):
-    """Malla adaptativa: los lóbulos están en |β_i| ≲ Λ/2, más margen para
-       la cola gaussiana y el anti-squeezing."""
+def wigner_grid(Lam, n_x=301, n_p=251, x_pad=5.0, p_half=4.0):
+    """Malla adaptativa"""
     x_max = 0.5*Lam + x_pad
     return (np.linspace(-x_max, x_max, n_x),
             np.linspace(-p_half, p_half, n_p))
 
 
-# ══════════════════════════════════════════════════════════════════
 #  EJECUCIÓN — mapa (Λ, θ) de δ1, δ2, E_N, S (variacional)
-# ══════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
 
     cv_val   = 1.0
