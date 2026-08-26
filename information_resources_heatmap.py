@@ -143,9 +143,8 @@ if __name__ == "__main__":
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
     OUTDIR = f'cat_state_information_resources_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}'
-    TMPDIR = os.path.join(OUTDIR, '_tmp')
-    os.makedirs(TMPDIR, exist_ok=True)
-
+    os.makedirs(OUTDIR, exist_ok=True)
+    
     def _one_point(iL, ith):
         Lam = Lam_arr[iL]; th = theta_arr[ith]
         lam1 = Lam*np.cos(th); lam2 = Lam*np.sin(th)
@@ -156,7 +155,6 @@ if __name__ == "__main__":
         xvec, pvec = wigner_grid(Lam)
         d1, d2, n1, n2 = marginal_negativities(psi, xvec, pvec)
 
-        np.savetxt(os.path.join(TMPDIR, f'{iL:03d}_{ith:03d}.txt'), np.array([[Lam, th, d1, d2, E_N, S, n1, n2]]), fmt='%.8e')
         return iL, ith, d1, d2, E_N, S, n1, n2
 
     tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
