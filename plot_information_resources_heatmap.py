@@ -1,14 +1,3 @@
-"""
-Heatmaps de los recursos de información del gato bimodal en el plano (Λ, θ).
-
-Lee los .txt de   cat_state_information_resources_omega0{W}_nL_{nL}_nth_{nth}/
-y genera 4 figuras en Resultados_aniso/ (.jpg y .svg):
-    1. δ1 y δ2   — dos paneles, colorbar compartida
-    2. E_N
-    3. S
-    4. ∫W1 y ∫W2 — control de malla, dos paneles, colorbar compartida
-"""
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,11 +30,14 @@ plt.rcParams.update({
 omega0 = 1.0
 nLam   = 32
 nth    = 32
+KIND   = 'var'          # 'var' (variacional) o 'exact'
 OUT    = 'Resultados_aniso'
 CMAP   = 'inferno'
 
-SRC = (f'cat_state_information_resources_omega0{omega0:.1f}'  f'_nL_{nLam}_nth_{nth}')
-TAG = f'nL{nLam}_nth{nth}'
+_kind_tag = '' if KIND == 'var' else 'exact_'
+SRC = (f'cat_state_information_resources_{_kind_tag}omega0{omega0:.1f}'
+       f'_nL_{nLam}_nth_{nth}')
+TAG = f'{KIND}_nL{nLam}_nth{nth}'
 os.makedirs(OUT, exist_ok=True)
 
 # ── carga ─────────────────────────────────────────────────────────
