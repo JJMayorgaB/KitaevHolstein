@@ -12,9 +12,7 @@ warnings.filterwarnings('ignore')
 
 omega0 = 1.0
 
-# ══════════════════════════════════════════════════════════════════
 #  FUNCIONAL Y MINIMIZACIÓN DEL GATO (2 params), detuning cero
-# ══════════════════════════════════════════════════════════════════
 def energy_grad_cat(x, Lam, s):
     a, r = x
     d = (Lam - a)
@@ -37,9 +35,7 @@ def _minimize_cat(lam1, lam2, s, x_warm=None):
     bestE, bestx = np.inf, None
     for sd in seeds:
         x0 = np.clip(np.array(sd, float), lo, hi)
-        res = minimize(energy_grad_cat, x0, args=(Lam, s), jac=True,
-                       method='L-BFGS-B', bounds=bnd,
-                       options={'ftol': 1e-14, 'gtol': 1e-11, 'maxiter': 500})
+        res = minimize(energy_grad_cat, x0, args=(Lam, s), jac=True, method='L-BFGS-B', bounds=bnd, options={'ftol': 1e-14, 'gtol': 1e-11, 'maxiter': 500})
         if res.fun < bestE:
             bestE, bestx = res.fun, res.x
     return bestE, bestx
@@ -123,8 +119,7 @@ def entanglement_measures_var(psi, N, tol=1e-12):
 def wigner_grid(Lam, n_x=301, n_p=251, x_pad=5.0, p_half=4.0):
     """Malla adaptativa"""
     x_max = 0.5*Lam + x_pad
-    return (np.linspace(-x_max, x_max, n_x),
-            np.linspace(-p_half, p_half, n_p))
+    return (np.linspace(-x_max, x_max, n_x), np.linspace(-p_half, p_half, n_p))
 
 
 #  EJECUCIÓN — mapa (Λ, θ) de δ1, δ2, E_N, S (variacional)
@@ -133,12 +128,12 @@ if __name__ == "__main__":
     cv_val   = 1.0
     sector   = 'even'
     sign     = +1
-    N_FOCK   = 50
+    N_FOCK   = 40
     r_thresh = 1e-5
     N_JOBS   = 64
 
-    nLam = 200
-    nth  = 200
+    nLam = 300
+    nth  = 300
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
@@ -191,4 +186,3 @@ if __name__ == "__main__":
     print(f'Guardado en {OUTDIR}/')
     print(f'  min ∫W1 = {np.nanmin(n1_map):.4f}   min ∫W2 = {np.nanmin(n2_map):.4f}')
 
-#vim test writing 
