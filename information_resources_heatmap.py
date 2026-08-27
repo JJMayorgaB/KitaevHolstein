@@ -135,7 +135,7 @@ if __name__ == "__main__":
     sign     = +1
     N_FOCK   = 50
     r_thresh = 1e-5
-    N_JOBS   = 120
+    N_JOBS   = 64
 
     nLam = 200
     nth  = 200
