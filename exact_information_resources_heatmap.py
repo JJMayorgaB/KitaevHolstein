@@ -184,7 +184,7 @@ if __name__ == "__main__":
     sector   = 'even'
     sign     = +1
     nph_wig  = 85
-    N_JOBS   = 120
+    N_JOBS   = 101
 
     nLam = 32
     nth  = 32
