@@ -7,6 +7,7 @@ import numpy as np
 from scipy.special import factorial, eval_genlaguerre
 from scipy.linalg import eigh
 from joblib import Parallel, delayed
+import qutip as qt
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -28,29 +29,6 @@ def disp_matrix(M_ph, alpha):
                 k    = n - mp
                 pref = gauss * ((-alpha)**k) * np.sqrt(facts[mp] / facts[n])
                 D[mp, n] = pref * eval_genlaguerre(mp, k, alpha2)
-    return D
-
-
-def disp_matrix_complex(M_ph, alpha):
-    """D(alpha) = exp(alpha a^dag - alpha* a), alpha complejo."""
-    N       = M_ph + 1
-    alpha   = complex(alpha)
-    alpha_c = np.conj(alpha)
-    abs2    = (alpha * alpha_c).real
-    gauss   = np.exp(-0.5 * abs2)
-    facts   = np.array([float(factorial(k, exact=True)) for k in range(N)])
-
-    D = np.zeros((N, N), dtype=complex)
-    for mp in range(N):
-        for n in range(N):
-            if mp >= n:
-                k    = mp - n
-                pref = gauss * (alpha**k) * np.sqrt(facts[n] / facts[mp])
-                D[mp, n] = pref * eval_genlaguerre(n, k, abs2)
-            else:
-                k    = n - mp
-                pref = gauss * ((-alpha_c)**k) * np.sqrt(facts[mp] / facts[n])
-                D[mp, n] = pref * eval_genlaguerre(mp, k, abs2)
     return D
 
 
@@ -130,16 +108,13 @@ def entanglement_measures_pure(rho1, tol=1e-12):
 
 
 def wigner_dm_negativity(rho, xvec, pvec):
-    """W(α) = (2/π) Σ_n (-1)^n [D†(α) ρ D(α)]_{nn}, serial."""
-    N = rho.shape[0]
-    parity = (-1.0) ** np.arange(N)
+    """W(α) de una matriz densidad de un modo + su negatividad.
 
-    W = np.zeros((len(pvec), len(xvec)))
-    for ip, p in enumerate(pvec):
-        for ix, x in enumerate(xvec):
-            Dd = disp_matrix_complex(N-1, -(x + 1j*p))
-            M_ = Dd @ rho @ Dd.conj().T
-            W[ip, ix] = (2.0/np.pi) * np.sum(parity * np.diag(M_).real)
+    Usa qt.wigner (algoritmo de Clenshaw, compilado): no construye D(α),
+    evitando la pérdida de precisión de la fórmula de Laguerre con
+    factoriales explícitos, que producía ∫W hasta 1.14 en Λ grande.
+    """
+    W = qt.wigner(qt.Qobj(rho), xvec, pvec)
 
     if not hasattr(np, 'trapz'):
         np.trapz = np.trapezoid
@@ -200,32 +175,34 @@ if __name__ == "__main__":
 
         M = M_of_Lam(Lam)
         ev, evec, nph, n_ph = diagonalize_LF_sweet( M, cv_val, cv_val, omega0, omega0, g1, g2, sector=sector)
+        gap = ev[1] - ev[0]
 
         psi_ph, nph_f = exact_cat_bimodal(g1, g2, evec[:, 0], nph, n_ph, omega0, sign=sign, sector=sector, nph_out=nph_wig)
 
         xvec, pvec = wigner_grid(Lam)
         d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(psi_ph, nph_f, xvec, pvec)
 
-        return iL, ith, d1, d2, E_N, S, n1, n2, rk
+        return iL, ith, d1, d2, E_N, S, n1, n2, rk, gap
 
     tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
     print(f'Puntos: {len(tasks)}   ({nLam} Λ × {nth} θ)', flush=True)
 
     _res = Parallel(n_jobs=N_JOBS, verbose=10)(delayed(_one_point)(iL, ith) for iL, ith in tasks)
 
-    d1_map = np.full((nLam, nth), np.nan)
-    d2_map = np.full((nLam, nth), np.nan)
-    EN_map = np.full((nLam, nth), np.nan)
-    S_map  = np.full((nLam, nth), np.nan)
-    n1_map = np.full((nLam, nth), np.nan)
-    n2_map = np.full((nLam, nth), np.nan)
-    rk_map = np.full((nLam, nth), np.nan)
+    d1_map  = np.full((nLam, nth), np.nan)
+    d2_map  = np.full((nLam, nth), np.nan)
+    EN_map  = np.full((nLam, nth), np.nan)
+    S_map   = np.full((nLam, nth), np.nan)
+    n1_map  = np.full((nLam, nth), np.nan)
+    n2_map  = np.full((nLam, nth), np.nan)
+    rk_map  = np.full((nLam, nth), np.nan)
+    gap_map = np.full((nLam, nth), np.nan)
 
-    for iL, ith, d1, d2, E_N, S, n1, n2, rk in _res:
+    for iL, ith, d1, d2, E_N, S, n1, n2, rk, gap in _res:
         d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
         EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
         n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
-        rk_map[iL, ith] = rk
+        rk_map[iL, ith] = rk; gap_map[iL, ith] = gap
 
     hdr = (f'mapa exacto (Lambda, theta) | filas = Lambda ({nLam}), ' f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, ' f'nph_wig={nph_wig}')
 
@@ -238,6 +215,12 @@ if __name__ == "__main__":
     np.savetxt(f'{OUTDIR}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
     np.savetxt(f'{OUTDIR}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
     np.savetxt(f'{OUTDIR}/rank_eff.txt', rk_map, fmt='%.8e', header=hdr)
+    np.savetxt(f'{OUTDIR}/gap.txt',      gap_map, fmt='%.8e', header=hdr)
 
     print(f'Guardado en {OUTDIR}/')
-    print(f'  min ∫W1 = {np.nanmin(n1_map):.4f}   min ∫W2 = {np.nanmin(n2_map):.4f}')
+    print(f'  ∫W1 ∈ [{np.nanmin(n1_map):.6f}, {np.nanmax(n1_map):.6f}]')
+    print(f'  ∫W2 ∈ [{np.nanmin(n2_map):.6f}, {np.nanmax(n2_map):.6f}]')
+    print(f'  puntos con |∫W-1| > 1e-3 : {int(np.sum(np.abs(n1_map-1) > 1e-3))} de {n1_map.size}')
+    print(f'  E_N ∈ [{np.nanmin(EN_map):.4f}, {np.nanmax(EN_map):.4f}]   '
+          f'S ∈ [{np.nanmin(S_map):.4f}, {np.nanmax(S_map):.4f}]')
+    print(f'  rank_eff ∈ [{int(np.nanmin(rk_map))}, {int(np.nanmax(rk_map))}]')
