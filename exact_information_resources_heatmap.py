@@ -159,10 +159,10 @@ if __name__ == "__main__":
     sector   = 'even'
     sign     = +1
     nph_wig  = 85
-    N_JOBS   = 101
+    N_JOBS   = 128
 
-    nLam = 32
-    nth  = 32
+    nLam = 200
+    nth  = 200
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
