@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.gridspec as gridspec
 
 plt.rcParams.update({
     'text.usetex': True,
@@ -28,9 +29,9 @@ plt.rcParams.update({
 #  PARÁMETROS — etiquetas del nombre de la carpeta de datos
 # ══════════════════════════════════════════════════════════════════
 omega0 = 1.0
-nLam   = 32
-nth    = 32
-KIND   = 'var'          # 'var' (variacional) o 'exact'
+nLam   = 200
+nth    = 200
+KIND   = 'exact'          # 'var' (variacional) o 'exact'
 OUT    = 'Resultados_aniso'
 CMAP   = 'inferno'
 
@@ -121,6 +122,59 @@ def _pair(dA, dB, labA, labB, cbar_label, name, col_ticks='white', vmin=0.0):
     cbar.ax.tick_params(direction='in')
     _save(fig, name)
 
+
+def _fmt_cut_axes(ax):
+    ax.set_xlabel(r'$\Lambda$')
+    ax.set_xlim(Lam_arr[0], Lam_arr[-1])
+    ax.set_xticks(ytick_pos)
+    ax.set_xticklabels(ytick_lab)
+    ax.tick_params(axis='both', direction='in', bottom=True, top=True,
+                   left=True, right=True)
+
+
+def _cut_entanglement(theta_cut, name):
+    """E_N y S vs Λ en un corte de θ fijo, superpuestos."""
+    it = int(np.argmin(np.abs(theta_arr - theta_cut)))
+    print(f'  corte E_N/S en θ = {theta_arr[it]:.4f}  '
+          f'({theta_arr[it]/np.pi:.4f} π, índice {it})')
+
+    C_EN = plt.cm.seismic(0.88)
+    C_S  = plt.cm.seismic(0.12)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    ax.plot(Lam_arr, EN[:, it], '-',  color=C_EN, lw=1.8, label=r'$E_N$')
+    ax.plot(Lam_arr, S[:, it],  '-', color=C_S,  lw=1.8, label=r'$S$')
+    ax.axhline(1.0, color='k', ls=':', lw=1.2)
+    ax.set_xticks([0, np.sqrt(2), 2*np.sqrt(2), 3*np.sqrt(2), 4*np.sqrt(2)])
+    ax.set_xticklabels([r'$0$', r'$\sqrt{2}$', r'$2\sqrt{2}$', r'$3\sqrt{2}$', r'$4\sqrt{2}$'])
+    ax.set_ylabel(r'$E_N,\ S$')
+    _fmt_cut_axes(ax)
+    ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+              loc='lower right', borderpad=0.5, handlelength=2.0, labelspacing=0.3)
+    plt.tight_layout()
+    _save(fig, name)
+
+
+def _cut_marginal(theta_cut, name):
+    """δ1 vs Λ en un corte de θ fijo."""
+    it = int(np.argmin(np.abs(theta_arr - theta_cut)))
+    print(f'  corte δ1 en θ = {theta_arr[it]:.4f}  '
+          f'({theta_arr[it]/np.pi:.4f} π, índice {it})')
+
+    C1 = plt.cm.seismic(0.88)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    ax.plot(Lam_arr, d1[:, it], '-', color=C1, lw=1.8, label=r'$\delta_1$')
+    ax.set_yticklabels(['0', r'$1/\pi$'])
+    ax.set_yticks([0, 1/np.pi])
+    ax.set_ylabel(r'$\delta_1$')
+    _fmt_cut_axes(ax)
+    ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+              loc='lower right', borderpad=0.5, handlelength=2.0, labelspacing=0.3)
+    plt.tight_layout()
+    _save(fig, name)
+
+
 # ── 1. negatividades marginales: escala desde 0 ──
 _pair(d1, d2, r'(a)', r'(b)', r'$\delta_i$', 'heatmap_marginal_negativity')
 
@@ -132,5 +186,11 @@ _single(S, r'$S$', 'heatmap_vn_entropy')
 
 # ── 4. control de malla: escala desde el mínimo de los datos ──
 _pair(n1, n2, r'(a)', r'(b)', r'$\int W_i$', 'heatmap_wigner_norm', vmin=None)
+
+# ── 5. corte E_N y S en θ = π/4 ───────────────────────────────────
+_cut_entanglement(np.pi/4, 'cut_entanglement_theta_pi4')
+
+# ── 6. corte δ1 en θ = π ──────────────────────────────────────────
+_cut_marginal(np.pi, 'cut_marginal_theta_pi')
 
 print('Listo.')
