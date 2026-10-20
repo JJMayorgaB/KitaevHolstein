@@ -33,3 +33,6 @@ _tmp/
 _tmp_*/_tmp/
 _tmp_*/
 *.log
+
+anisotropic_kitaev_holstein.ipynb
+kitaev_holstein.ipynb
