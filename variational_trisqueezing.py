@@ -63,11 +63,11 @@ TAU_MAX  = 0.08                # cota de |τ|: para |τ| ≳ 0.1, T(τ)|0> no co
 
 # Figura 1: plano (λ/t, Δ/t), λ₁ = λ₂ = λ
 T_F1     = 1.0
-LAM_F1   = np.linspace(0.0, 1.5, 120)
-DELTA_F1 = np.linspace(0.0, 1.5, 120)
+LAM_F1   = np.linspace(0.0, 1.5, 250)
+DELTA_F1 = np.linspace(0.0, 1.5, 250)
 
 # Figuras 2, 3 y convergencia: eje Λ = √(λ₁² + λ₂²), δλ = 0
-LAM_F2   = np.linspace(0.01, 4.0*np.sqrt(2), 150)
+LAM_F2   = np.linspace(0.01, 4.0*np.sqrt(2), 250)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        'Resultados_variational_trisqueezing')
