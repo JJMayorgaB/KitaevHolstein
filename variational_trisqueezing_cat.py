@@ -523,11 +523,13 @@ def wigner_cat(psi, xvec, pvec, verbose=True, n_jobs=-1):
 
 def wigner_pure_padded(psi, xvec, pvec):
     """W(α) = (2/π) Σ_n (−1)^n |<n|D(−α)|ψ>|², α = x + i p, para un estado puro.
-    El estado se rellena con ceros hasta N_pad ≥ (R+5)², R = máx|α| de la malla, para
-    que D(−α) truncado sea exacto en toda la malla. D(−α) ∝ D(−x) D(−i p) (la fase
-    no afecta |·|²); cada factor se exponencia vía la diagonalización de su generador."""
+    El estado se rellena con ceros hasta N_pad ≥ (R + √<n>_ψ + 6)², R = máx|α| de la malla,
+    para que D(−α) truncado sea exacto en toda la malla aun cuando ψ tiene lóbulos lejos
+    del origen. D(−α) ∝ D(−x) D(−i p) (la fase no afecta |·|²); cada factor se exponencia
+    vía la diagonalización de su generador."""
     R = np.sqrt(np.max(np.abs(xvec))**2 + np.max(np.abs(pvec))**2)
-    N = max(len(psi), int(np.ceil((R + 5.0)**2)))
+    n_mean = np.sum(np.arange(len(psi)) * np.abs(psi)**2) / np.sum(np.abs(psi)**2)
+    N = max(len(psi), int(np.ceil((R + np.sqrt(n_mean) + 6.0)**2)))
     v = np.zeros(N); v[:len(psi)] = psi
     b  = np.diag(np.sqrt(np.arange(1, N, dtype=float)), 1)
     w1, V1 = eigh(1j*(b.T - b))          # D(x)  = V1 e^{−i x w1} V1†
