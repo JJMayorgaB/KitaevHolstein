@@ -50,7 +50,7 @@ warnings.filterwarnings('ignore')
 #  PARÁMETROS
 # ══════════════════════════════════════════════════════════════════
 MODE     = 'all'               # 'tau0' | 'trisq' | 'all'  ('all' corre primero τ = 0)
-N_JOBS   = -1                  # núcleos para joblib (-1 = todos)
+N_JOBS   = 128                  # núcleos para joblib (-1 = todos)
 
 omega0   = 1.0
 eps1_val = 0.25
@@ -60,13 +60,14 @@ N_CONV   = [40, 80, 120, 170]  # cortes de Fock para el test de convergencia
 TAU_MAX  = 0.08                # cota de |τ|: para |τ| ≳ 0.1, T(τ)|0> no converge con el corte
                                # de Fock (cola de ley de potencias, ver test T3b)
 
+
 # Figura 1: plano (λ/t, Δ/t), λ₁ = λ₂ = λ
 T_F1     = 1.0
-LAM_F1   = np.linspace(0.0, 1.5, 200)
-DELTA_F1 = np.linspace(0.0, 1.5, 200)
+LAM_F1   = np.linspace(0.0, 1.5, 120)
+DELTA_F1 = np.linspace(0.0, 1.5, 120)
 
 # Figuras 2, 3 y convergencia: eje Λ = √(λ₁² + λ₂²), δλ = 0
-LAM_F2   = np.linspace(0.01, 4.0*np.sqrt(2), 200)
+LAM_F2   = np.linspace(0.01, 4.0*np.sqrt(2), 150)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        'Resultados_variational_trisqueezing')
