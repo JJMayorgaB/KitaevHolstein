@@ -497,7 +497,7 @@ def plot_fig1(dE, suffix, has_tex):
         ylabel = r'$\Delta/t$'
         norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=(6, 5))
         im = ax.imshow(np.tanh(dE), origin='lower', aspect='auto',
                        extent=extent, cmap='seismic', norm=norm_p)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=r'$\tanh(\delta E)$')
@@ -572,7 +572,7 @@ def plot_fig2(R, suffix, fix_tau0):
             pstr = rf"$\delta\lambda={0},\ \varepsilon_1={eps1_val},\ \varepsilon_2={eps2_val:.3f},\ J_\alpha/\omega_0={cv}$"
             for sector in ('even', 'odd'):
                 X = R[(sector, cv)]['X']
-                fig, ax = plt.subplots(figsize=(5, 4))
+                fig, ax = plt.subplots(figsize=(6, 5))
                 for sym, i, ls, col in curves[sector]:
                     _plot_param(ax, Lam_arr, X[i], sym, ls, col)
                 ax.axvline(0.5*np.sqrt(2), color='k', lw=1.0, ls=':', alpha=0.5)
@@ -618,7 +618,7 @@ def plot_fig3(R, suffix):
     rel_e = {cv: R[('even', cv)]['rel'] for cv in cv_list}
 
     with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in'}):
-        fig, (ax_o1, ax_o2) = plt.subplots(1, 2, figsize=(10, 4))
+        fig, (ax_o1, ax_o2) = plt.subplots(1, 2, figsize=(12, 5))
 
         # Panel (a): fidelidad
         ax_e1 = ax_o1.twinx()
@@ -686,7 +686,7 @@ def plot_convergence(conv):
     Lam_arr = LAM_F2
     LSN = {40: ':', 80: '-.', 120: '--', 170: '-'}
     with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in'}):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
         for ax, cv, lab in zip(axes, cv_list, ['(a)', '(b)', '(c)']):
             for N in N_CONV:
                 ax.plot(Lam_arr, conv[('odd',  cv, N)]['Evar'], LSN[N], color=C_ODD,  lw=1.4)
