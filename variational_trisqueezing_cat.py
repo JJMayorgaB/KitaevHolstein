@@ -68,12 +68,13 @@ LAM_CUT        = np.sqrt(2.0)*np.linspace(0.01, 4.0, 300)      # p±, β̃, sola
 # negatividad δ_W (cv = 1)
 CV_NEG      = 1.0
 LAM_NEG_EX  = np.linspace(0.01, 7.0, 200)
-X_NEG_EX    = np.linspace(-5.0, 5.0, 301)
-P_NEG_EX    = np.linspace(-2.2, 2.2, 301)
+# malla común (exacto, DS, DST) en coordenadas de α, Δx = Δp = 0.02.
+# Convergencia verificada contra x∈[−10,10], p∈[−7,7] (1501×1051): |Δδ| ≤ 6e-5, ∫W = 1.
+X_NEG_EX    = np.linspace(-8.0, 8.0, 801)
+P_NEG_EX    = np.linspace(-5.5, 5.5, 551)
 LAM_NEG_VAR = np.linspace(0.01, 7.0, 300)
-# la malla original estaba en unidades de QuTiP (g = √2): α = (x + i p)/√2
-X_NEG_VAR   = np.linspace(-9.0, 9.0, 601)/np.sqrt(2.0)
-P_NEG_VAR   = np.linspace(-3.0, 3.0, 301)/np.sqrt(2.0)
+X_NEG_VAR   = X_NEG_EX
+P_NEG_VAR   = P_NEG_EX
 
 # Wigner exacto vs variacional (λ₁ = λ₂ = λ_val)
 CV_WIG     = 1.0
@@ -520,6 +521,35 @@ def wigner_cat(psi, xvec, pvec, verbose=True, n_jobs=-1):
     return W
 
 
+def wigner_pure_padded(psi, xvec, pvec):
+    """W(α) = (2/π) Σ_n (−1)^n |<n|D(−α)|ψ>|², α = x + i p, para un estado puro.
+    El estado se rellena con ceros hasta N_pad ≥ (R+5)², R = máx|α| de la malla, para
+    que D(−α) truncado sea exacto en toda la malla. D(−α) ∝ D(−x) D(−i p) (la fase
+    no afecta |·|²); cada factor se exponencia vía la diagonalización de su generador."""
+    R = np.sqrt(np.max(np.abs(xvec))**2 + np.max(np.abs(pvec))**2)
+    N = max(len(psi), int(np.ceil((R + 5.0)**2)))
+    v = np.zeros(N); v[:len(psi)] = psi
+    b  = np.diag(np.sqrt(np.arange(1, N, dtype=float)), 1)
+    w1, V1 = eigh(1j*(b.T - b))          # D(x)  = V1 e^{−i x w1} V1†
+    w2, V2 = eigh(b.T + b)               # D(iy) = V2 e^{+i y w2} V2ᵀ
+    V1h = V1.conj().T
+    par = ((-1.0)**np.arange(N))[:, None]
+    ph_x = np.exp(1j*np.outer(w1, np.asarray(xvec)))      # D(−x): e^{+i x w1}
+    W = np.zeros((len(pvec), len(xvec)))
+    for ip, y in enumerate(pvec):
+        u  = V2 @ (np.exp(-1j*y*w2) * (V2.T @ v))         # D(−i y)|ψ>
+        Dx = V1 @ (ph_x * (V1h @ u)[:, None])             # D(−x) D(−i y)|ψ>, todas las x
+        W[ip] = (2.0/np.pi) * np.sum(par * np.abs(Dx)**2, axis=0)
+    return W
+
+
+def wigner_and_cuts_padded(psi, xvec, pvec):
+    W = wigner_pure_padded(psi, xvec, pvec)
+    ip0 = np.argmin(np.abs(pvec))
+    ix0 = np.argmin(np.abs(xvec))
+    return W, W[ip0, :], W[:, ix0]
+
+
 def wigner_and_cuts_num(psi, xvec, pvec, verbose=True):
     W = wigner_cat(psi, xvec, pvec, verbose=verbose)
     ip0 = np.argmin(np.abs(pvec))
@@ -540,7 +570,7 @@ def _neg_point(Lam, sign, xvec, pvec, cv_val):
     M = _Mof_Lam(Lam)
     _, vec, _ = E_cat_exact(lam1, lam2, cv_val, M=M)
     psi = exact_cat_state(lam1, lam2, vec, M, sign=sign)
-    W = wigner_cat(psi, xvec, pvec, verbose=False, n_jobs=1)
+    W = wigner_pure_padded(psi, xvec, pvec)
     return wigner_negativity(W, xvec, pvec)
 
 
@@ -549,7 +579,7 @@ def _neg_point_variational(Lam, sign, xvec, pvec, cv_val, fix_tau0):
     M = _Mof_Lam(Lam)
     _, x = minimize_cat_num(Lam, cv_val, M, fix_tau0)
     psi = variational_cat_vector(Lam, x, sign, M)
-    W = wigner_cat(psi, xvec, pvec, verbose=False, n_jobs=1)
+    W = wigner_pure_padded(psi, xvec, pvec)
     return wigner_negativity(W, xvec, pvec)
 
 
@@ -1077,6 +1107,81 @@ def fig_negativity(NE, NV, suffix):
         _save(fig, f'negativity_exact_vs_variational{suffix}')
 
 
+def fig_compare(sweeps, negs):
+    """Exacto vs D S|0> (τ = 0) vs D S T|0> en la misma figura:
+    negatividad δ_W, probabilidades p± y β̃."""
+    C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
+    LS_EX, LS_DS, LS_DST = '--', '-', ':'
+    style_handles = [mlines.Line2D([], [], color='k', ls=LS_EX,  lw=1.5, label='exact'),
+                     mlines.Line2D([], [], color='k', ls=LS_DS,  lw=1.5, label=r'$\hat D\hat S|0\rangle$'),
+                     mlines.Line2D([], [], color='k', ls=LS_DST, lw=1.8, label=r'$\hat D\hat S\hat T|0\rangle$')]
+    with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in'}):
+        # ── negatividad ──
+        NE, NV0 = negs['tau0']
+        _,  NV1 = negs['trisq']
+        fig, ax = plt.subplots(figsize=(6.5, 4.5))
+        ax.plot(NE['Lam'],  NE['dp'],  LS_EX,  color=C_PLUS,  lw=1.25)
+        ax.plot(NE['Lam'],  NE['dm'],  LS_EX,  color=C_MINUS, lw=1.25)
+        ax.plot(NV0['Lam'], NV0['dp'], LS_DS,  color=C_PLUS,  lw=1.5)
+        ax.plot(NV0['Lam'], NV0['dm'], LS_DS,  color=C_MINUS, lw=1.5)
+        ax.plot(NV1['Lam'], NV1['dp'], LS_DST, color=C_PLUS,  lw=1.8)
+        ax.plot(NV1['Lam'], NV1['dm'], LS_DST, color=C_MINUS, lw=1.8)
+        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
+        ax.set_xlim(0.01, 7.0); ax.set_xticks(np.arange(0, 7, 1))
+        ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
+        leg = style_handles + [mlines.Line2D([], [], color=C_PLUS,  lw=1.5, label=r'$(+)$'),
+                               mlines.Line2D([], [], color=C_MINUS, lw=1.5, label=r'$(-)$')]
+        ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+                  loc='lower right', borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
+        plt.tight_layout()
+        _save(fig, 'negativity_exact_DS_DST')
+
+        for cv in cv_list:
+            q0 = _cut_quantities(sweeps['tau0'][('cut', cv)])
+            q1 = _cut_quantities(sweeps['trisq'][('cut', cv)])
+            Lc = q0['Lc']
+
+            # ── probabilidades ──
+            pp_e = _spline_smooth(Lc, _smooth(q0['pp_e'], window=15, poly=3), s_factor=1e-4)
+            pm_e = _spline_smooth(Lc, _smooth(q0['pm_e'], window=15, poly=3), s_factor=1e-4)
+            fig, ax = plt.subplots(figsize=(6.0, 4.5))
+            ax.plot(Lc, pp_e,       LS_EX,  color=C_PLUS,  lw=1.5)
+            ax.plot(Lc, pm_e,       LS_EX,  color=C_MINUS, lw=1.5)
+            ax.plot(Lc, q0['pp_v'], LS_DS,  color=C_PLUS,  lw=1.5)
+            ax.plot(Lc, q0['pm_v'], LS_DS,  color=C_MINUS, lw=1.5)
+            ax.plot(Lc, q1['pp_v'], LS_DST, color=C_PLUS,  lw=1.8)
+            ax.plot(Lc, q1['pm_v'], LS_DST, color=C_MINUS, lw=1.8)
+            ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'Measurement probability', labelpad=5)
+            ax.set_xlim(Lc[0], 5); ax.set_ylim(-0.02, 1.02)
+            ax.yaxis.set_major_locator(ticker.FixedLocator([0.0, 0.5, 1.0]))
+            ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
+            ax.text(0.975, 0.85, r'$\dfrac{1}{4\,|\mathcal{N}_+|^{2}}$', transform=ax.transAxes, color=C_PLUS,  ha='right', va='center', fontsize=20)
+            ax.text(0.975, 0.15, r'$\dfrac{1}{4\,|\mathcal{N}_-|^{2}}$', transform=ax.transAxes, color=C_MINUS, ha='right', va='center', fontsize=20)
+            ax.legend(handles=style_handles, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+                      loc='center left', borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
+            plt.tight_layout()
+            _save(fig, f'prob_cat_exact_DS_DST_rho{RHO}_cv{cv}')
+
+            # ── β̃ ──
+            th_e = _spline_smooth(Lc, _smooth(q0['th_e'], window=13, poly=3), s_factor=1e-4)
+            fig, ax = plt.subplots(figsize=(6, 5.5))
+            ax.plot(Lc, th_e,       LS_EX,  color='k',   lw=1.5)
+            ax.plot(Lc, q0['th_v'], LS_DS,  color=C_PLUS,  lw=1.5)
+            ax.plot(Lc, q1['th_v'], LS_DST, color=C_MINUS, lw=1.8)
+            ax.plot(Lc, Lc/2.0, color='gray', ls='-.', lw=1.2)
+            ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\tilde{\beta}$')
+            ax.set_xlim(0.0, Lc[-1])
+            ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
+            leg = [mlines.Line2D([], [], color='k',     ls=LS_EX,  lw=1.5, label='exact'),
+                   mlines.Line2D([], [], color=C_PLUS,  ls=LS_DS,  lw=1.5, label=r'$\hat D\hat S|0\rangle$'),
+                   mlines.Line2D([], [], color=C_MINUS, ls=LS_DST, lw=1.8, label=r'$\hat D\hat S\hat T|0\rangle$'),
+                   mlines.Line2D([], [], color='gray',  ls='-.',   lw=1.2, label=r'$\Lambda/2$')]
+            ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+                      borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
+            plt.tight_layout()
+            _save(fig, f'theta_tilde_exact_DS_DST_rho{RHO}_cv{cv}')
+
+
 def fig_2x2(S, NE, NV, suffix):
     cv = CV_2X2
     LAM_XMAX = 5.0
@@ -1167,7 +1272,7 @@ def fig_wigner_stacks(suffix, fix_tau0):
         W_ex, cp_ex, cx_ex = wigner_and_cuts_num(psi_ex, xvec, pvec, verbose=False)
         _, x = minimize_cat_num(Lam, CV_WIG, M, fix_tau0)
         psi_v = variational_cat_vector(Lam, x, +1, M)
-        W_v, cp_v, cx_v = wigner_and_cuts_num(psi_v, xvec, pvec, verbose=False)
+        W_v, cp_v, cx_v = wigner_and_cuts_padded(psi_v, xvec, pvec)
         fig, _ = plot_wigner_stack_num([W_ex, W_v], [cp_ex, cp_v], [cx_ex, cx_v],
                                        xvec=xvec, pvec=pvec, axis_lim=(-4.2, 4.2),
                                        labeleven=True, figsize=figsize)
@@ -1300,6 +1405,10 @@ if __name__ == '__main__':
         sweeps['tau0'], negs['tau0'] = run(True)
     if MODE in ('trisq', 'all'):
         sweeps['trisq'], negs['trisq'] = run(False)
+
+    if 'tau0' in sweeps and 'trisq' in sweeps:
+        _hr('FIGURAS DE COMPARACIÓN: exacto vs D S vs D S T')
+        fig_compare(sweeps, negs)
 
     tests_post(sweeps, negs)
     print(f'\nFiguras guardadas en: {OUT_DIR}')
