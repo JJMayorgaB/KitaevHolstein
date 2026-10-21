@@ -9,6 +9,8 @@ Observables en la rama ↑:
     <b†>_↑    = <φ↑| b† |φ↑> / <φ↑|φ↑>
     Var_↑(x)  = <x²>_↑ − <x>_↑²,   x = (b + b†)/√2
 Variacional: |φ↑> = D(η/2) S(r) T(τ)|0>  ->  <b†>_↑ = η/2 (ansatz D S y D S T).
+Variacional (P+AP)S: |φ↑> = N[|r, η/2> + κ|r, Λ − η/2>],  |φ↓> = P|φ↑>  (paridad de Rabi).
+Variacional (P+AP)ST: |φ↑> = N[|τ, r, η/2> + κ|−τ, r, Λ − η/2>] (el AP hereda τ↓ = −τ).
 Exacto: bloque ↑ del vector propio del estado fundamental.
 Figuras en Resultados_conditional_displacement/.
 """
@@ -184,6 +186,48 @@ def minimize_var(Lam, J, M, fix_tau0, x_warm=None):
     return bestE, bestx
 
 
+def state_paps(x, Lam, ops):
+    """(P+AP)S, rama ↑: N[|r, η/2> + κ|r, Λ − η/2>] (normalizado).
+    Si x tiene 4 entradas, (P+AP)ST: N[|τ, r, η/2> + κ|−τ, r, Λ − η/2>]."""
+    eta, r, kap = x[0], x[1], x[2]
+    tau = x[3] if len(x) > 3 else 0.0
+    v = ops.state(0.5*eta, r, tau) + kap*ops.state(Lam - 0.5*eta, r, -tau)
+    return v/np.linalg.norm(v)
+
+
+def energy_paps(x, Lam, J, ops):
+    """δ = 0, simetría de Rabi: |φ↓> = P|φ↑>, c↓ = −c↑."""
+    pu  = state_paps(x, Lam, ops)
+    par = (-1.0)**ops.nvec
+    return omega0*(pu @ (ops.nvec*pu)) - J*(pu @ ops.apply(1, Lam, par*pu))
+
+
+def minimize_paps(Lam, J, M, x_warm=None, with_tau=False, x_s=None):
+    """with_tau=False: (P+AP)S (η, r, κ);  with_tau=True: (P+AP)ST (η, r, κ, τ).
+    x_s: óptimo de (P+AP)S en el mismo Λ, usado como semilla para (P+AP)ST."""
+    ops = get_ops(M)
+    bnd = [(-1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (0.0, 1.0)]
+    seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (0.1, 0.6)]
+    if x_warm is None:
+        seeds += [(e, r, k) for e in (0.5*Lam, 1.5*Lam) for r in (-0.1, -0.3) for k in (0.05, 0.3, 0.9)]
+    if with_tau:
+        bnd += [(-TAU_MAX, TAU_MAX)]
+        seeds = [sd + (t,) for sd in seeds for t in (0.0, 0.03)]
+        if x_s is not None:
+            seeds = [tuple(x_s[:3]) + (t,) for t in (0.0, 0.02, -0.02)] + seeds
+    if x_warm is not None:
+        seeds = [tuple(x_warm)] + seeds
+    lo = np.array([b[0] for b in bnd]); hi = np.array([b[1] for b in bnd])
+    bestE, bestx = np.inf, None
+    for sd in seeds:
+        res = minimize(energy_paps, np.clip(np.asarray(sd, float), lo, hi),
+                       args=(Lam, J, ops), method='L-BFGS-B', bounds=bnd,
+                       options={'ftol': 1e-14, 'gtol': 1e-10, 'maxiter': 500})
+        if res.fun < bestE:
+            bestE, bestx = res.fun, res.x
+    return bestE, bestx
+
+
 def conditional_moments(phi, b):
     """<b†>, Var(x) condicionados al bloque phi (vector real, no normalizado)."""
     nrm = phi @ phi
@@ -200,8 +244,9 @@ def sweep(J):
     n = len(LAM_ARR)
     out = {k: np.full(n, np.nan) for k in
            ('b_ex', 'b_ex_dn', 'var_ex', 'b_ds', 'var_ds', 'b_dst', 'var_dst',
-            'tau', 'E_ex', 'E_ds', 'E_dst')}
-    w_ds = w_dst = None
+            'tau', 'E_ex', 'E_ds', 'E_dst', 'b_paps', 'var_paps', 'E_paps', 'kappa',
+            'b_papst', 'var_papst', 'E_papst', 'tau_papst')}
+    w_ds = w_dst = w_paps = w_papst = None
     for k, Lam in enumerate(LAM_ARR):
         M   = _Mof_Lam(Lam)
         ops = get_ops(M)
@@ -225,6 +270,14 @@ def sweep(J):
         E, x = minimize_var(Lam, J, M, False, w_dst); w_dst = x
         out['E_dst'][k], out['tau'][k] = E, x[2]
         out['b_dst'][k], out['var_dst'][k] = conditional_moments(ops.state(0.5*x[0], x[1], x[2]), ops.b)
+        # variacional (P+AP) S
+        E, x = minimize_paps(Lam, J, M, w_paps); w_paps = x
+        out['E_paps'][k], out['kappa'][k] = E, x[2]
+        out['b_paps'][k], out['var_paps'][k] = conditional_moments(state_paps(x, Lam, ops), ops.b)
+        # variacional (P+AP) S T
+        E, x = minimize_paps(Lam, J, M, w_papst, with_tau=True, x_s=w_paps); w_papst = x
+        out['E_papst'][k], out['tau_papst'][k] = E, x[3]
+        out['b_papst'][k], out['var_papst'][k] = conditional_moments(state_paps(x, Lam, ops), ops.b)
     return out
 
 
@@ -232,14 +285,20 @@ def sweep(J):
 #  FIGURAS
 # ══════════════════════════════════════════════════════════════════
 C_EX, C_DS, C_DST = 'black', plt.cm.seismic(0.88), plt.cm.seismic(0.12)
+C_PAPS = 'tab:green'
+C_PAPST = 'tab:orange'
 
 
-def _legend(ax, loc='upper right'):
+def _legend(fig):
     h = [mlines.Line2D([], [], color=C_EX,  ls='-',  lw=1.6, label='exact'),
          mlines.Line2D([], [], color=C_DS,  ls='--', lw=1.6, label=r'$\hat D\hat S|0\rangle$'),
-         mlines.Line2D([], [], color=C_DST, ls=':',  lw=1.8, label=r'$\hat D\hat S\hat T|0\rangle$')]
-    ax.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
-              borderpad=0.5, handlelength=2.0, labelspacing=0.3, loc=loc)
+         mlines.Line2D([], [], color=C_DST, ls=':',  lw=1.8, label=r'$\hat D\hat S\hat T|0\rangle$'),
+         mlines.Line2D([], [], color=C_PAPS, ls='-.', lw=1.6, label=r'$(\mathrm{P}+\mathrm{AP})\hat S$'),
+         mlines.Line2D([], [], color=C_PAPST, ls=(0, (6, 2, 1, 2, 1, 2)), lw=1.6,
+                       label=r'$(\mathrm{P}+\mathrm{AP})\hat S\hat T$')]
+    fig.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+               borderpad=0.5, handlelength=2.4, columnspacing=1.6, ncol=len(h),
+               loc='lower center', bbox_to_anchor=(0.5, 1.0))   # fuera de los paneles, una fila
 
 
 def plot_mean(R):
@@ -249,16 +308,19 @@ def plot_mean(R):
         ax.plot(LAM_ARR, d['b_ex'],  '-',  color=C_EX,  lw=1.6)
         ax.plot(LAM_ARR, d['b_ds'],  '--', color=C_DS,  lw=1.6)
         ax.plot(LAM_ARR, d['b_dst'], ':',  color=C_DST, lw=1.8)
+        ax.plot(LAM_ARR, d['b_paps'], '-.', color=C_PAPS, lw=1.6)
+        ax.plot(LAM_ARR, d['b_papst'], ls=(0, (6, 2, 1, 2, 1, 2)), color=C_PAPST, lw=1.6)
         ax.set_xlabel(r'$\Lambda$')
         ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
-        ymax = max(np.nanmax(d['b_ex']), np.nanmax(d['b_ds']), np.nanmax(d['b_dst']))
+        ymax = max(np.nanmax(d['b_ex']), np.nanmax(d['b_ds']), np.nanmax(d['b_dst']), np.nanmax(d['b_paps']),
+                   np.nanmax(d['b_papst']))
         ax.set_ylim(0.0, 1.25*ymax)                       # espacio para la etiqueta del panel
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.text(0.05, 0.95, lab + rf'  $J_\alpha/\omega_0={J}$', transform=ax.transAxes,
                 ha='left', va='top')
     axes[0].set_ylabel(r'$\langle\hat b^\dagger\rangle_\uparrow$')
-    _legend(axes[-1])
     plt.tight_layout()
+    _legend(fig)
     fig.savefig(os.path.join(OUT_DIR, 'conditional_displacement.png'),
                 bbox_inches='tight', transparent=False, dpi=300)
     plt.close(fig)
@@ -271,20 +333,74 @@ def plot_var(R):
         ax.plot(LAM_ARR, d['var_ex'],  '-',  color=C_EX,  lw=1.6)
         ax.plot(LAM_ARR, d['var_ds'],  '--', color=C_DS,  lw=1.6)
         ax.plot(LAM_ARR, d['var_dst'], ':',  color=C_DST, lw=1.8)
+        ax.plot(LAM_ARR, d['var_paps'], '-.', color=C_PAPS, lw=1.6)
+        ax.plot(LAM_ARR, d['var_papst'], ls=(0, (6, 2, 1, 2, 1, 2)), color=C_PAPST, lw=1.6)
         ax.axhline(0.5, color='gray', lw=0.8, ls='-.')
         ax.set_xlabel(r'$\Lambda$')
         ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
-        span = max(np.nanmax(d['var_ex']), np.nanmax(d['var_ds']), np.nanmax(d['var_dst'])) - 0.5
+        span = max(np.nanmax(d['var_ex']), np.nanmax(d['var_ds']), np.nanmax(d['var_dst']),
+                   np.nanmax(d['var_paps']), np.nanmax(d['var_papst'])) - 0.5
         ax.set_ylim(0.5 - 0.03*span, 0.5 + 1.3*span)     # espacio para la etiqueta del panel
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.text(0.05, 0.95, lab + rf'  $J_\alpha/\omega_0={J}$', transform=ax.transAxes,
                 ha='left', va='top')
     axes[0].set_ylabel(r'$\mathrm{Var}_\uparrow(\hat x)$')
-    _legend(axes[0], loc='upper right')
     plt.tight_layout()
+    _legend(fig)
     fig.savefig(os.path.join(OUT_DIR, 'conditional_variance.png'),
                 bbox_inches='tight', transparent=False, dpi=300)
     plt.close(fig)
+
+
+def _plot_relerr(R, key, ylabel, fname):
+    """Error absoluto |X_var − X_ex| de cada ansatz, misma estructura 1×3."""
+    LS_PAPST = (0, (6, 2, 1, 2, 1, 2))
+    styles = [('ds', '--', C_DS, 1.6), ('dst', ':', C_DST, 1.8),
+              ('paps', '-.', C_PAPS, 1.6), ('papst', LS_PAPST, C_PAPST, 1.6)]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    for ax, J, lab in zip(axes, cv_list, ['(a)', '(b)', '(c)']):
+        d = R[J]
+        errs = []
+        for name, ls, c, lw in styles:
+            e = np.abs(d[f'{key}_{name}'] - d[f'{key}_ex'])
+            errs.append(e)
+            ax.plot(LAM_ARR, e, ls=ls, color=c, lw=lw)
+        hi = np.nanmax(np.concatenate(errs))
+        ax.set_ylim(0.0, 1.25*hi)                       # espacio para la etiqueta del panel
+        ax.set_xlabel(r'$\Lambda$')
+        ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
+        ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
+        ax.text(0.05, 0.95, lab + rf'  $J_\alpha/\omega_0={J}$', transform=ax.transAxes,
+                ha='left', va='top')
+    axes[0].set_ylabel(ylabel)
+    plt.tight_layout()
+    _legend_var(fig)
+    fig.savefig(os.path.join(OUT_DIR, fname), bbox_inches='tight', transparent=False, dpi=300)
+    plt.close(fig)
+
+
+def _legend_var(fig):
+    """Leyenda de los cuatro ansatz variacionales (sin el exacto, que es la referencia)."""
+    h = [mlines.Line2D([], [], color=C_DS,  ls='--', lw=1.6, label=r'$\hat D\hat S|0\rangle$'),
+         mlines.Line2D([], [], color=C_DST, ls=':',  lw=1.8, label=r'$\hat D\hat S\hat T|0\rangle$'),
+         mlines.Line2D([], [], color=C_PAPS, ls='-.', lw=1.6, label=r'$(\mathrm{P}+\mathrm{AP})\hat S$'),
+         mlines.Line2D([], [], color=C_PAPST, ls=(0, (6, 2, 1, 2, 1, 2)), lw=1.6,
+                       label=r'$(\mathrm{P}+\mathrm{AP})\hat S\hat T$')]
+    fig.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+               borderpad=0.5, handlelength=2.4, columnspacing=1.6, ncol=len(h),
+               loc='lower center', bbox_to_anchor=(0.5, 1.0))
+
+
+def plot_mean_relerr(R):
+    _plot_relerr(R, 'b',
+                 r'$|\langle\hat b^\dagger\rangle_\uparrow^{\mathrm{var}}-\langle\hat b^\dagger\rangle_\uparrow^{\mathrm{ex}}|$',
+                 'conditional_displacement_abserr.png')
+
+
+def plot_var_relerr(R):
+    _plot_relerr(R, 'var',
+                 r'$|\mathrm{Var}_\uparrow^{\mathrm{var}}-\mathrm{Var}_\uparrow^{\mathrm{ex}}|$',
+                 'conditional_variance_abserr.png')
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -302,16 +418,28 @@ if __name__ == '__main__':
         print(f'[D1] J/ω0={J}:  máx|<b>_↑ + <b>_↓| exacto = {np.nanmax(np.abs(d["b_ex"] + d["b_ex_dn"])):.2e}')
         print(f'[D2] J/ω0={J}:  violaciones E_DS < E_ex: {int(np.sum(d["E_ds"] - d["E_ex"] < -1e-9))}'
               f'   E_DST < E_ex: {int(np.sum(d["E_dst"] - d["E_ex"] < -1e-9))}'
-              f'   E_DST > E_DS: {int(np.sum(d["E_dst"] - d["E_ds"] > 1e-9))}')
+              f'   E_DST > E_DS: {int(np.sum(d["E_dst"] - d["E_ds"] > 1e-9))}'
+              f'   E_PAPS < E_ex: {int(np.sum(d["E_paps"] - d["E_ex"] < -1e-9))}'
+              f'   E_PAPS > E_DS: {int(np.sum(d["E_paps"] - d["E_ds"] > 1e-9))}'
+              f'   E_PAPST < E_ex: {int(np.sum(d["E_papst"] - d["E_ex"] < -1e-9))}'
+              f'   E_PAPST > E_PAPS: {int(np.sum(d["E_papst"] - d["E_paps"] > 1e-9))}')
         jump_ex  = np.nanmax(np.abs(np.diff(d['b_ex'])))
         jump_ds  = np.nanmax(np.abs(np.diff(d['b_ds'])))
         jump_dst = np.nanmax(np.abs(np.diff(d['b_dst'])))
+        jump_paps = np.nanmax(np.abs(np.diff(d['b_paps'])))
+        jump_papst = np.nanmax(np.abs(np.diff(d['b_papst'])))
         print(f'[D3] J/ω0={J}:  máx|Δ<b†>_↑| entre puntos vecinos (ΔΛ={LAM_ARR[1]-LAM_ARR[0]:.3f}):'
-              f' exacto={jump_ex:.3e}  DS={jump_ds:.3e}  DST={jump_dst:.3e}'
+              f' exacto={jump_ex:.3e}  DS={jump_ds:.3e}  DST={jump_dst:.3e}  (P+AP)S={jump_paps:.3e}  (P+AP)ST={jump_papst:.3e}'
               f'   (Λ del salto DS={LAM_ARR[np.nanargmax(np.abs(np.diff(d["b_ds"])))]:.3f},'
               f' DST={LAM_ARR[np.nanargmax(np.abs(np.diff(d["b_dst"])))]:.3f})')
         print(f'[D4] J/ω0={J}:  máx|τ| = {np.nanmax(np.abs(d["tau"])):.4f}')
+        print(f'[D5] J/ω0={J}:  (P+AP)S  κ ∈ [{np.nanmin(d["kappa"]):.3f}, {np.nanmax(d["kappa"]):.3f}]'
+              f'   máx(E_DS − E_PAPS) = {np.nanmax(d["E_ds"] - d["E_paps"]):.3e}')
+        print(f'[D6] J/ω0={J}:  (P+AP)ST  máx|τ| = {np.nanmax(np.abs(d["tau_papst"])):.4f}'
+              f'   máx(E_PAPS − E_PAPST) = {np.nanmax(d["E_paps"] - d["E_papst"]):.3e}')
 
     plot_mean(R)
     plot_var(R)
+    plot_mean_relerr(R)
+    plot_var_relerr(R)
     print(f'\nFiguras guardadas en: {OUT_DIR}')
