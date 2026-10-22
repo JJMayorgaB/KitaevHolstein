@@ -90,7 +90,7 @@ def setup_style():
 #  FOCK
 # ══════════════════════════════════════════════════════════════════
 def disp_matrix(M_ph, alpha):
-    """<m'|D(alpha)|m>, alpha real (igual que en los scripts anteriores)."""
+    """<m'|D(alpha)|m>, alpha real"""
     N      = M_ph + 1
     alpha2 = alpha * alpha
     gauss  = np.exp(-0.5 * alpha2)
