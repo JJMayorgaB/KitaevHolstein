@@ -40,6 +40,7 @@ omega0  = 1.0
 cv_list = [0.5, 1.0, 1.5]                         # J_α/ω0
 LAM_ARR = np.linspace(0.01, 4.0*np.sqrt(2), 400)  # Λ
 TAU_MAX = 0.08
+N_CHUNKS = 40                                     # tramos de Λ por cada J (paralelización)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        'Resultados_conditional_displacement')
@@ -240,14 +241,15 @@ def conditional_moments(phi, b):
     return mean_b, var_x
 
 
-def sweep(J):
-    n = len(LAM_ARR)
+def sweep(J, Lam_arr=LAM_ARR):
+    """Barrido con continuación (arranque en caliente) sobre Lam_arr."""
+    n = len(Lam_arr)
     out = {k: np.full(n, np.nan) for k in
            ('b_ex', 'b_ex_dn', 'var_ex', 'b_ds', 'var_ds', 'b_dst', 'var_dst',
             'tau', 'E_ex', 'E_ds', 'E_dst', 'b_paps', 'var_paps', 'E_paps', 'kappa',
             'b_papst', 'var_papst', 'E_papst', 'tau_papst')}
     w_ds = w_dst = w_paps = w_papst = None
-    for k, Lam in enumerate(LAM_ARR):
+    for k, Lam in enumerate(Lam_arr):
         M   = _Mof_Lam(Lam)
         ops = get_ops(M)
         n1  = M + 1
@@ -409,8 +411,15 @@ def plot_var_relerr(R):
 if __name__ == '__main__':
     os.makedirs(OUT_DIR, exist_ok=True)
     setup_style()
-    res = Parallel(n_jobs=N_JOBS, verbose=5)(delayed(sweep)(J) for J in cv_list)
-    R = dict(zip(cv_list, res))
+    # cada J se parte en N_CHUNKS tramos de Λ independientes (cada tramo arranca con todas
+    # las semillas y sigue con continuación dentro del tramo); los tramos se unen al final
+    chunks = np.array_split(np.arange(len(LAM_ARR)), N_CHUNKS)
+    tasks  = [(J, idx) for J in cv_list for idx in chunks]
+    res = Parallel(n_jobs=N_JOBS, verbose=5)(delayed(sweep)(J, LAM_ARR[idx]) for J, idx in tasks)
+    R = {}
+    for J in cv_list:
+        parts = [r for (Jt, _), r in zip(tasks, res) if Jt == J]
+        R[J] = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
 
     print('\nTESTS')
     for J in cv_list:
