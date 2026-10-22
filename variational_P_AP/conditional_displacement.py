@@ -14,7 +14,8 @@ c↑ = −c↓ = 1/√2. La minimización usa el funcional cerrado (todos los el
                               + 2κ F (Λ²/4 − (Λ−η)² e^{4r}/4 + sinh²r) ]
                          − J |2κ + (1+κ²) F| } / (1 + κ² + 2κF),
     F = exp[−(Λ−η)² e^{2r}/2],   κ ∈ [−1, 1].
-El vector en Fock solo se construye con los parámetros óptimos, para los momentos condicionados.
+<b†>_↑ también es cerrado: [η/2 + κ²(Λ − η/2) + κΛF] / (1 + κ² + 2κF).
+El vector en Fock solo se construye con los parámetros óptimos, para Var_↑(x) y los tests.
 Exacto: bloque ↑ del vector propio del estado fundamental.
 Figuras en Figures/conditional/.
 """
@@ -163,9 +164,19 @@ def energy_paps(x, Lam, J):
     sh2 = np.sinh(r)**2
     G   = (0.25*Lam**2 - 0.25*(Lam - eta)**2*np.exp(4.0*r) + sh2)*F
     den = 1.0 + kap**2 + 2.0*kap*F
+    if den < 1e-12:                 # κ = −1 con F = 1: |φ↑> = 0, no es un estado
+        return 1e6
     num = (omega0*(0.25*eta**2 + (1.0 + kap**2)*sh2 + kap**2*(Lam - 0.5*eta)**2 + 2.0*kap*G)
            - J*abs(2.0*kap + (1.0 + kap**2)*F))
     return eps_tilde + num/den
+
+
+def mean_b_paps(x, Lam):
+    """<b†>_↑ cerrado de (P+AP)S:
+    [η/2 + κ²(Λ − η/2) + κΛF] / (1 + κ² + 2κF),  F = exp[−(Λ−η)² e^{2r}/2]."""
+    eta, r, kap = x
+    F = np.exp(-0.5*(Lam - eta)**2*np.exp(2.0*r))
+    return (0.5*eta + kap**2*(Lam - 0.5*eta) + kap*Lam*F)/(1.0 + kap**2 + 2.0*kap*F)
 
 
 def state_paps(x, Lam, ops):
@@ -186,7 +197,7 @@ def energy_paps_fock(x, Lam, J, ops):
 def minimize_paps(Lam, J, x_warm=None):
     """(P+AP)S: minimiza E(η, r, κ) cerrado con κ ∈ [−KAP_MAX, KAP_MAX]."""
     bnd = [(-1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (-KAP_MAX, KAP_MAX)]
-    seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (-0.1, 0.1, 0.6)]
+    seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (0.1, 0.6, -0.1)]
     if x_warm is None:
         seeds += [(e, r, k) for e in (0.5*Lam, 1.5*Lam) for r in (-0.1, -0.3) for k in (0.05, 0.3, 0.9)]
     else:
@@ -219,7 +230,7 @@ def sweep(J, Lam_arr=LAM_ARR):
     n = len(Lam_arr)
     out = {k: np.full(n, np.nan) for k in
            ('b_ex', 'b_ex_dn', 'var_ex', 'E_ex', 'b_paps', 'var_paps', 'E_paps', 'kappa',
-            'E_paps_fock', 'tail')}
+            'E_paps_fock', 'tail', 'b_paps_fock')}
     w_paps = None
     for k, Lam in enumerate(Lam_arr):
         M   = _Mof_Lam(Lam)
@@ -240,7 +251,8 @@ def sweep(J, Lam_arr=LAM_ARR):
         E, x = minimize_paps(Lam, J, w_paps); w_paps = x
         out['E_paps'][k], out['kappa'][k] = E, x[2]
         pu = state_paps(x, Lam, ops)
-        out['b_paps'][k], out['var_paps'][k] = conditional_moments(pu, ops.b)
+        out['b_paps_fock'][k], out['var_paps'][k] = conditional_moments(pu, ops.b)
+        out['b_paps'][k] = mean_b_paps(x, Lam)
         out['E_paps_fock'][k] = energy_paps_fock(x, Lam, J, ops)
         out['tail'][k] = np.sum(pu[-5:]**2)
     return out
@@ -375,6 +387,10 @@ if __name__ == '__main__':
               f'   máx. peso en los 5 últimos niveles de Fock = {np.nanmax(d["tail"]):.2e}')
         print(f'[D5] J/ω0={J}:  (P+AP)S  κ ∈ [{np.nanmin(d["kappa"]):.3f}, {np.nanmax(d["kappa"]):.3f}]'
               f'   puntos con |κ| en la cota ({KAP_MAX}) = {int(np.sum(np.abs(d["kappa"]) > KAP_MAX - 1e-6))}')
+        neg = d['kappa'] < 0
+        print(f'[D5] J/ω0={J}:  puntos con κ < 0 = {int(np.sum(neg))}'
+              + (f'   Λ = {np.array2string(LAM_ARR[neg], precision=3, separator=", ")}' if neg.any() else ''))
+        print(f'[D6] J/ω0={J}:  máx|<b†>_↑ cerrado − <b†>_↑ Fock| = {np.nanmax(np.abs(d["b_paps"] - d["b_paps_fock"])):.2e}')
 
     plot_mean(R)
     plot_var(R)
