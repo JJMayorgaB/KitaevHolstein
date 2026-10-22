@@ -22,9 +22,9 @@ Corridas (MODE = 'all'):
     1) (P+AP)S:  τ = 0 fijo   (sufijo _PAPS)
     2) (P+AP)ST: τ libre      (sufijo _PAPST)
 Todas las figuras se guardan en Resultados_variational_P_AP_cat/.
-La parte EXACTA (diagonalización, gato exacto, solapamiento exacto con cortes
-escalonados y el suavizado de las curvas exactas) se mantiene igual que en el
-código original.
+La parte EXACTA (diagonalización, gato exacto y el suavizado de las curvas exactas) se
+mantiene igual que en el código original, incluido el corte escalonado en Fock del
+solapamiento o_ex; el mismo corte se aplica ahora a o_var.
 """
 
 import io
@@ -407,12 +407,31 @@ def E_cat_exact(lam1, lam2, s, M=None):
     return ev[0], V[:, 0], M
 
 
-def _cat_overlap(lam1, lam2, x, evec_ex, M, sign=+1):
-    """(|fid|, o_ex, o_var) para la rama sign del gato.
-    Parte exacta idéntica a la original (cortes escalonados para o_ex).
-    Parte variacional: |φ↑>, |φ↓> = Π|φ↑> del ansatz (P+AP)."""
+def _overlap_staircase(v1, v2, Lam, M):
+    """<v1|D(Λ)|v2> con el corte escalonado en Fock del notebook original
+    (D(Λ) truncada no es unitaria sobre Fock altos)."""
     LAM_CUTS = np.linspace(1.5, 4.0, 20)
     CUTOFFS  = np.linspace(0.999, 0.995, 20)
+    n1 = M + 1
+    n_passed = int(np.searchsorted(LAM_CUTS, Lam, side='right'))
+    if n_passed == 0:
+        return np.vdot(v1, disp_matrix(M, +Lam) @ v2).real
+    c = CUTOFFS[min(n_passed - 1, len(CUTOFFS) - 1)]
+
+    def _Mc(v):
+        cs = np.cumsum(np.abs(v)**2) / max(np.vdot(v, v).real, 1e-30)
+        return int(np.searchsorted(cs, c)) + 1
+
+    Mc = min(max(_Mc(v1), _Mc(v2)), n1)
+    return np.vdot(v1[:Mc], disp_matrix(Mc - 1, +Lam) @ v2[:Mc]).real
+
+
+def _cat_overlap(lam1, lam2, x, evec_ex, M, sign=+1):
+    """(|fid|, o_ex, o_var) para la rama sign del gato.
+    o_ex = 2<φ1|D(Λ)|φ2> y o_var = <φ↑|D(Λ)|φ↓> se calculan con el MISMO corte
+    escalonado en Fock del notebook original (_overlap_staircase), de modo que p± y β̃
+    salen de la misma fórmula para el estado exacto y para el variacional.
+    Parte variacional: |φ↑>, |φ↓> = Π|φ↑> del ansatz (P+AP)."""
 
     Lam = _Lambda(lam1, lam2)
     n1  = M + 1
@@ -434,20 +453,8 @@ def _cat_overlap(lam1, lam2, x, evec_ex, M, sign=+1):
 
     fid_overlap = np.vdot(cat_var, cat_ex)
 
-    o_var = g_pa @ ops.apply(1, Lam, g_ma)  # <φ↑|D(Λ)|φ↓>
-
-    n_passed = int(np.searchsorted(LAM_CUTS, Lam, side='right'))
-    if n_passed == 0:
-        o_ex = 2.0 * np.vdot(phi1, disp_matrix(M, +Lam) @ phi2).real
-    else:
-        c = CUTOFFS[min(n_passed - 1, len(CUTOFFS) - 1)]
-
-        def _Mc(v):
-            cs = np.cumsum(np.abs(v)**2) / max(np.vdot(v, v).real, 1e-30)
-            return int(np.searchsorted(cs, c)) + 1
-
-        Mc = min(max(_Mc(phi1), _Mc(phi2)), n1)
-        o_ex = 2.0 * np.vdot(phi1[:Mc], disp_matrix(Mc - 1, +Lam) @ phi2[:Mc]).real
+    o_var = _overlap_staircase(g_pa, g_ma, Lam, M)          # <φ↑|D(Λ)|φ↓>
+    o_ex  = 2.0 * _overlap_staircase(phi1, phi2, Lam, M)    # φ1, φ2 con norma² 1/2
 
     return abs(fid_overlap), o_ex, o_var
 
