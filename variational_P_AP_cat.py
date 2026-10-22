@@ -64,8 +64,6 @@ omega0  = 1.0
 cv_list = [0.5, 1.0, 1.5]       # J_α/ω0 = s/ω0
 TAU_MAX = 0.08                  # cota de |τ| (convergencia de T(τ)|0>, ver tests)
 KAP_MAX = 1.0                   # cota de κ (redundancia κ -> 1/κ con η -> 2Λ − η)
-HYST_TOL = 1e-10                # una semilla reemplaza al arranque en caliente (o a κ = 0) solo si
-                                # baja la energía en más de HYST_TOL: κ parte de 0 en Λ -> 0
 RHO     = 1.0                   # corte θ = π/4
 
 # mallas en Λ (las mismas de las figuras originales)
@@ -351,14 +349,12 @@ def energy_cat_num(x, Lam, s, ops, fix_tau0):
 
 
 def minimize_cat_num(Lam, s, M, fix_tau0, x_warm=None):
-    """Devuelve (E, (η, r, κ, τ)). Semillas (η, r) del original combinadas con κ
-    (primero κ = 0, es decir D S). En Λ = 0 se impone κ = 0."""
+    """Devuelve (E, (η, r, κ, τ)). Semillas (η, r) del original combinadas con κ."""
     ops  = get_ops(M)
     base = [(0.0, 0.0), (0.0, -0.1), (Lam, 0.0), (Lam, -0.25), (0.5*Lam, -0.1)]
     kaps = (0.0, 0.15) if x_warm is not None else (0.0, 0.15, 0.5)
-    bk   = (0.0, 0.0) if Lam < 1e-12 else (0.0, KAP_MAX)   # Λ = 0: rama móvil pura -> κ = 0
-    bnd  = [(-Lam - 1.0, 2.0*Lam + 1.0), (-1.0, 0.0), bk]
-    seeds = [sd + (k,) for k in kaps for sd in base]
+    bnd  = [(-Lam - 1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (0.0, KAP_MAX)]
+    seeds = [sd + (k,) for sd in base for k in kaps]
     if fix_tau0:
         n_par = 3
     else:
@@ -374,7 +370,7 @@ def minimize_cat_num(Lam, s, M, fix_tau0, x_warm=None):
         x0  = np.clip(np.asarray(sd, float), lo, hi)
         res = minimize(energy_cat_num, x0, args=(Lam, s, ops, fix_tau0), method='L-BFGS-B',
                        bounds=bnd, options={'ftol': 1e-14, 'gtol': 1e-10, 'maxiter': 500})
-        if bestx is None or res.fun < bestE - HYST_TOL:
+        if res.fun < bestE:
             bestE, bestx = res.fun, res.x
     if fix_tau0:
         bestx = np.concatenate([bestx, [0.0]])

@@ -61,9 +61,6 @@ eps2_val = 0.25
 cv_list  = [0.5, 1.0, 1.5]     # J_α/ω0  (t = Δ = cv en las figuras 2 y 3)
 N_CONV   = [40, 80, 120, 170]  # cortes de Fock para el test de convergencia
 KAP_MAX  = 1.0                 # cota de |κ| (redundancia κ -> 1/κ: basta |κ| <= 1)
-HYST_TOL = 1e-10               # una semilla reemplaza al arranque en caliente (o a κ = 0) solo si
-                               # baja la energía en más de HYST_TOL: κ parte de 0 en Λ -> 0 y evoluciona
-                               # de forma continua
 TAU_MAX  = 0.08                # cota de |τ|: para |τ| ≳ 0.1, T(τ)|0> no converge con el corte
                                # de Fock (cola de ley de potencias, ver test T3b)
 
@@ -330,8 +327,7 @@ def _seeds(Lam, n_par, sector, warm=False):
     """Semillas de la versión original (η, r) combinadas con κ ∈ KAP_SEEDS. En el sector
     par se intercambian las ramas (↑ <-> ↓) para pasar de la convención vieja (bloque 1 = |00>)
     a la de las notas (|↑_e> = |11>). Para el ansatz simétrico (δ_α = 0) se usa la proyección
-    η = (η↑ − η↓)/2, r = (r↑ + r↓)/2. Con arranque en caliente se usa un subconjunto de κ.
-    Las semillas con κ = 0 (ansatz D S) van primero."""
+    η = (η↑ − η↓)/2, r = (r↑ + r↓)/2. Con arranque en caliente se usa un subconjunto de κ."""
     h = 0.5*Lam
     old = [(0, 0, 0, 0), (-h, h, -0.1, -0.1), (h, -h, -0.1, -0.1), (-h, h, 0, 0),
            (0, 0, -0.1, -0.1), (-Lam, 0, -0.1, -0.1), (0, Lam, -0.1, -0.1),
@@ -341,7 +337,7 @@ def _seeds(Lam, n_par, sector, warm=False):
     kaps = KAP_SEEDS[:2] if warm else KAP_SEEDS
     s4 = [tuple(float(v) for v in sd) for sd in old]
     if n_par in (6, 8):                              # general
-        s6 = [sd + (k, k) for k in kaps for sd in s4]
+        s6 = [sd + (k, k) for sd in s4 for k in kaps]
         if n_par == 6:                               # τ = 0
             return s6
         s8 = [sd + (0.0, 0.0) for sd in s6]          # τ libre
@@ -351,7 +347,7 @@ def _seeds(Lam, n_par, sector, warm=False):
                    (h, -h, -0.1, -0.1, 0.15, 0.15, tt, tt)]
         return s8
     s2 = list(dict.fromkeys((0.5*(a - b), 0.5*(ra + rb)) for (a, b, ra, rb) in s4))
-    s3 = [sd + (k,) for k in kaps for sd in s2]
+    s3 = [sd + (k,) for sd in s2 for k in kaps]
     if n_par == 3:                                   # simétrico, τ = 0
         return s3
     s4s = [sd + (0.0,) for sd in s3]                 # simétrico, τ libre
@@ -363,8 +359,6 @@ def _seeds(Lam, n_par, sector, warm=False):
 def _bounds(Lam, n_par):
     be, br = (-Lam - 1.0, Lam + 1.0), (-1.5, 1.5)
     bk, bt = (-KAP_MAX, KAP_MAX), (-TAU_MAX, TAU_MAX)
-    if Lam < 1e-12:                    # Λ = 0: sin localización, rama móvil pura -> κ = 0 (D S)
-        bk = (0.0, 0.0)
     return {3: [be, br, bk], 4: [be, br, bk, bt], 6: [be, be, br, br, bk, bk],
             8: [be, be, br, br, bk, bk, bt, bt]}[n_par]
 
@@ -381,9 +375,7 @@ def _run_seeds(fun, args, Lam, n_par, x_warm, sector):
         x0  = np.clip(np.asarray(sd, float), lo, hi)
         res = minimize(fun, x0, args=args, method='L-BFGS-B', bounds=bnd,
                        options={'ftol': 1e-14, 'gtol': 1e-10, 'maxiter': 800})
-        # la primera semilla (arranque en caliente, o κ = 0) solo se reemplaza si otra
-        # baja la energía en más de HYST_TOL
-        if bestx is None or res.fun < bestE - HYST_TOL:
+        if res.fun < bestE:
             bestE, bestx = res.fun, res.x
     return bestE, bestx
 
