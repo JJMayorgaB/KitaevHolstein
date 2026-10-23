@@ -1,20 +1,5 @@
-# -*- coding: utf-8 -*-
 """
 Desplazamiento condicionado a una rama de pseudoespín, exacto vs variacional (P+AP)S.
-
-Bloque en detuning cero (δ_α = 0), base {|↑>, |↓>}:
-    H = [[ ω0 b†b ,  J D(Λ) ],
-         [ J D(Λ)† , ω0 b†b ]]
-Observables en la rama ↑:
-    <b†>_↑    = <φ↑| b† |φ↑> / <φ↑|φ↑>
-    Var_↑(x)  = <x²>_↑ − <x>_↑²,   x = (b + b†)/√2
-Variacional (P+AP)S: |φ↑> = N[|r, η/2> + κ|r, Λ − η/2>],  |φ↓> = P|φ↑>  (paridad de Rabi),
-c↑ = −c↓ = 1/√2. La minimización usa el funcional cerrado (todos los elementos de Fock):
-    E(η, r, κ) = ε̃_+ + { ω0[ η²/4 + (1+κ²) sinh²r + κ²(Λ − η/2)²
-                              + 2κ F (Λ²/4 − (Λ−η)² e^{4r}/4 + sinh²r) ]
-                         − J |2κ + (1+κ²) F| } / (1 + κ² + 2κF),
-    F = exp[−(Λ−η)² e^{2r}/2],   κ ∈ [−1, 1].
-<b†>_↑ también es cerrado: [η/2 + κ²(Λ − η/2) + κΛF] / (1 + κ² + 2κF).
 El vector en Fock solo se construye con los parámetros óptimos, para Var_↑(x) y los tests.
 Exacto: bloque ↑ del vector propio del estado fundamental.
 Figuras en Figures/conditional/.
@@ -37,12 +22,11 @@ from joblib import Parallel, delayed
 
 warnings.filterwarnings('ignore')
 
-# ══════════════════════════════════════════════════════════════════
+
 #  PARÁMETROS
-# ══════════════════════════════════════════════════════════════════
 N_JOBS  = -1
 omega0  = 1.0
-eps_tilde = 0.0                                   # ε̃_+ (el bloque exacto de abajo no lleva ε)
+eps_tilde = 0.0                                   # ε̃_+
 cv_list = [0.5, 1.0, 1.5]                         # J_α/ω0
 LAM_ARR = np.linspace(0.01, 4.0*np.sqrt(2), 400)  # Λ
 KAP_MAX = 1.0                                     # κ ∈ [−KAP_MAX, KAP_MAX]
@@ -51,9 +35,7 @@ N_CHUNKS = 40                                     # tramos de Λ por cada J (par
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', 'conditional')
 
 
-# ══════════════════════════════════════════════════════════════════
 #  ESTILO
-# ══════════════════════════════════════════════════════════════════
 def _latex_available():
     if shutil.which('latex') is None:
         return False
@@ -90,10 +72,7 @@ def setup_style():
     })
     return HAS_LATEX
 
-
-# ══════════════════════════════════════════════════════════════════
 #  FOCK (solo para el exacto y para los momentos del estado óptimo)
-# ══════════════════════════════════════════════════════════════════
 def disp_matrix(M_ph, alpha):
     """<m'|D(alpha)|m>, alpha real"""
     N      = M_ph + 1
@@ -154,11 +133,9 @@ def get_ops(M):
     return _OPS[M]
 
 
-# ══════════════════════════════════════════════════════════════════
 #  VARIACIONAL (P+AP)S (δ = 0, simétrico) Y EXACTO
-# ══════════════════════════════════════════════════════════════════
 def energy_paps(x, Lam, J):
-    """Funcional cerrado E(η, r, κ) de (P+AP)S en δ = 0 (sin truncación en Fock)."""
+    """Funcional cerrado E(η, r, κ) de (P+AP)S en δ = 0"""
     eta, r, kap = x
     F   = np.exp(-0.5*(Lam - eta)**2*np.exp(2.0*r))
     sh2 = np.sinh(r)**2
@@ -172,8 +149,7 @@ def energy_paps(x, Lam, J):
 
 
 def mean_b_paps(x, Lam):
-    """<b†>_↑ cerrado de (P+AP)S:
-    [η/2 + κ²(Λ − η/2) + κΛF] / (1 + κ² + 2κF),  F = exp[−(Λ−η)² e^{2r}/2]."""
+    """<b†>_↑ cerrado de (P+AP)S"""
     eta, r, kap = x
     F = np.exp(-0.5*(Lam - eta)**2*np.exp(2.0*r))
     return (0.5*eta + kap**2*(Lam - 0.5*eta) + kap*Lam*F)/(1.0 + kap**2 + 2.0*kap*F)
@@ -265,12 +241,11 @@ C_EX   = 'black'
 C_PAPS = 'tab:green'
 
 
-def _legend(fig):
+def _legend(ax):
     h = [mlines.Line2D([], [], color=C_EX,   ls='-',  lw=1.6, label='exact'),
          mlines.Line2D([], [], color=C_PAPS, ls='-.', lw=1.6, label=r'$(\mathrm{P}+\mathrm{AP})\hat S$')]
-    fig.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
-               borderpad=0.5, handlelength=2.4, columnspacing=1.6, ncol=len(h),
-               loc='lower center', bbox_to_anchor=(0.5, 1.0))   # fuera de los paneles, una fila
+    ax.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+              borderpad=0.5, handlelength=1.8, ncol=1, loc='upper right', bbox_to_anchor=(1.0, 0.86))   # panel (a), una columna, bajo la etiqueta
 
 
 def plot_mean(R):
@@ -282,13 +257,13 @@ def plot_mean(R):
         ax.set_xlabel(r'$\Lambda$')
         ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
         ymax = max(np.nanmax(d['b_ex']), np.nanmax(d['b_paps']))
-        ax.set_ylim(0.0, 1.25*ymax)                       # espacio para la etiqueta del panel
+        ax.set_ylim(0.0, 1.35*ymax)                       # espacio para la etiqueta y la leyenda
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.text(0.05, 0.95, lab + rf'  $J_\alpha/\omega_0={J}$', transform=ax.transAxes,
                 ha='left', va='top')
     axes[0].set_ylabel(r'$\langle\hat b^\dagger\rangle_\uparrow$')
     plt.tight_layout()
-    _legend(fig)
+    _legend(axes[0])
     fig.savefig(os.path.join(OUT_DIR, 'conditional_displacement.png'),
                 bbox_inches='tight', transparent=False, dpi=300)
     plt.close(fig)
@@ -304,13 +279,13 @@ def plot_var(R):
         ax.set_xlabel(r'$\Lambda$')
         ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
         span = max(np.nanmax(d['var_ex']), np.nanmax(d['var_paps'])) - 0.5
-        ax.set_ylim(0.5 - 0.03*span, 0.5 + 1.3*span)     # espacio para la etiqueta del panel
+        ax.set_ylim(0.5 - 0.03*span, 0.5 + 1.6*span)     # espacio para la etiqueta y la leyenda
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.text(0.05, 0.95, lab + rf'  $J_\alpha/\omega_0={J}$', transform=ax.transAxes,
                 ha='left', va='top')
     axes[0].set_ylabel(r'$\mathrm{Var}_\uparrow(\hat x)$')
     plt.tight_layout()
-    _legend(fig)
+    _legend(axes[0])
     fig.savefig(os.path.join(OUT_DIR, 'conditional_variance.png'),
                 bbox_inches='tight', transparent=False, dpi=300)
     plt.close(fig)
@@ -323,7 +298,7 @@ def _plot_relerr(R, key, ylabel, fname):
         d = R[J]
         e = np.abs(d[f'{key}_paps'] - d[f'{key}_ex'])
         ax.plot(LAM_ARR, e, ls='-.', color=C_PAPS, lw=1.6)
-        ax.set_ylim(0.0, 1.25*np.nanmax(e))             # espacio para la etiqueta del panel
+        ax.set_ylim(0.0, 1.6*np.nanmax(e))              # espacio para la etiqueta y la leyenda
         ax.set_xlabel(r'$\Lambda$')
         ax.set_xlim(LAM_ARR[0], LAM_ARR[-1])
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
@@ -331,17 +306,16 @@ def _plot_relerr(R, key, ylabel, fname):
                 ha='left', va='top')
     axes[0].set_ylabel(ylabel)
     plt.tight_layout()
-    _legend_var(fig)
+    _legend_var(axes[0])
     fig.savefig(os.path.join(OUT_DIR, fname), bbox_inches='tight', transparent=False, dpi=300)
     plt.close(fig)
 
 
-def _legend_var(fig):
+def _legend_var(ax):
     """Leyenda del ansatz variacional (sin el exacto, que es la referencia)."""
     h = [mlines.Line2D([], [], color=C_PAPS, ls='-.', lw=1.6, label=r'$(\mathrm{P}+\mathrm{AP})\hat S$')]
-    fig.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
-               borderpad=0.5, handlelength=2.4, columnspacing=1.6, ncol=len(h),
-               loc='lower center', bbox_to_anchor=(0.5, 1.0))
+    ax.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+              borderpad=0.5, handlelength=1.8, ncol=1, loc='upper right', bbox_to_anchor=(1.0, 0.86))   # panel (a), una columna, bajo la etiqueta
 
 
 def plot_mean_relerr(R):
@@ -356,9 +330,7 @@ def plot_var_relerr(R):
                  'conditional_variance_abserr.png')
 
 
-# ══════════════════════════════════════════════════════════════════
 #  EJECUCIÓN
-# ══════════════════════════════════════════════════════════════════
 if __name__ == '__main__':
     os.makedirs(OUT_DIR, exist_ok=True)
     setup_style()
