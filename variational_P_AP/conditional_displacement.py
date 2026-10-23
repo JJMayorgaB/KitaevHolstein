@@ -29,7 +29,7 @@ omega0  = 1.0
 eps_tilde = 0.0                                   # ε̃_+
 cv_list = [0.5, 1.0, 1.5]                         # J_α/ω0
 LAM_ARR = np.linspace(0.01, 4.0*np.sqrt(2), 400)  # Λ
-KAP_MAX = 1.0                                     # κ ∈ [−KAP_MAX, KAP_MAX]
+KAP_MAX = 1.0                                     # κ ∈ [0, KAP_MAX]
 N_CHUNKS = 40                                     # tramos de Λ por cada J (paralelización)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', 'conditional')
@@ -171,9 +171,9 @@ def energy_paps_fock(x, Lam, J, ops):
 
 
 def minimize_paps(Lam, J, x_warm=None):
-    """(P+AP)S: minimiza E(η, r, κ) cerrado con κ ∈ [−KAP_MAX, KAP_MAX]."""
-    bnd = [(-1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (-KAP_MAX, KAP_MAX)]
-    seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (0.1, 0.6, -0.1)]
+    """(P+AP)S: minimiza E(η, r, κ) cerrado con κ ∈ [0, KAP_MAX]."""
+    bnd = [(-1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (0.0, KAP_MAX)]
+    seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (0.1, 0.6, 0.0)]
     if x_warm is None:
         seeds += [(e, r, k) for e in (0.5*Lam, 1.5*Lam) for r in (-0.1, -0.3) for k in (0.05, 0.3, 0.9)]
     else:
@@ -359,9 +359,9 @@ if __name__ == '__main__':
               f'   máx. peso en los 5 últimos niveles de Fock = {np.nanmax(d["tail"]):.2e}')
         print(f'[D5] J/ω0={J}:  (P+AP)S  κ ∈ [{np.nanmin(d["kappa"]):.3f}, {np.nanmax(d["kappa"]):.3f}]'
               f'   puntos con |κ| en la cota ({KAP_MAX}) = {int(np.sum(np.abs(d["kappa"]) > KAP_MAX - 1e-6))}')
-        neg = d['kappa'] < 0
-        print(f'[D5] J/ω0={J}:  puntos con κ < 0 = {int(np.sum(neg))}'
-              + (f'   Λ = {np.array2string(LAM_ARR[neg], precision=3, separator=", ")}' if neg.any() else ''))
+        low = d['kappa'] < 1e-6
+        print(f'[D5] J/ω0={J}:  puntos con κ en la cota inferior (0) = {int(np.sum(low))}'
+              + (f'   Λ = {np.array2string(LAM_ARR[low], precision=3, separator=", ")}' if low.any() else ''))
         print(f'[D6] J/ω0={J}:  máx|<b†>_↑ cerrado − <b†>_↑ Fock| = {np.nanmax(np.abs(d["b_paps"] - d["b_paps_fock"])):.2e}')
 
     plot_mean(R)

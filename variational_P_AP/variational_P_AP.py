@@ -57,22 +57,22 @@ omega0   = 1.0
 eps1_val = 0.25
 eps2_val = 0.25
 cv_list  = [0.5, 1.0, 1.5]     # J_α/ω0  (t = Δ = cv en las figuras)
-KAP_MAX  = 1.0                 # cota de |κ| (redundancia κ -> 1/κ: basta |κ| <= 1)
+KAP_MAX  = 1.0                 # κ ∈ [0, KAP_MAX] (redundancia κ -> 1/κ: basta κ <= 1)
 
 # Figuras: eje Λ = √(λ₁² + λ₂²), δλ = 0
-LAM_F2   = np.linspace(0.01, 4.0*np.sqrt(2), 250)
+LAM_F2   = np.linspace(0.025, 4.0*np.sqrt(2), 400)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', 'anstaz')
 
 #  ESTILO (usa LaTeX si está disponible; si no, mathtext con fuente cm)
 _BASE_RC = {
-    'font.size': 26,
-    'axes.labelsize': 26,
-    'axes.titlesize': 26,
-    'xtick.labelsize': 22,
-    'ytick.labelsize': 22,
-    'legend.fontsize': 20,
-    'figure.titlesize': 24,
+    'font.size': 22,
+    'axes.labelsize': 22,
+    'axes.titlesize': 22,
+    'xtick.labelsize': 18,
+    'ytick.labelsize': 18,
+    'legend.fontsize': 16,
+    'figure.titlesize': 20,
     'axes.facecolor': 'white',
     'figure.facecolor': 'white',
     'axes.edgecolor': 'black',
@@ -317,7 +317,7 @@ def _seeds(Lam, n_par, sector, warm=False):
 
 def _bounds(Lam, n_par):
     be, br = (-Lam - 1.0, Lam + 1.0), (-1.5, 1.5)
-    bk = (-KAP_MAX, KAP_MAX)
+    bk = (0.0, KAP_MAX)
     return {3: [be, br, bk], 6: [be, be, br, br, bk, bk]}[n_par]
 
 
@@ -545,8 +545,8 @@ def plot_fig3(R, suffix):
         handles += [mlines.Line2D([], [], color=C_ODD,  lw=1.4, label='odd'),
                     mlines.Line2D([], [], color=C_EVEN, lw=1.4, label='even')]
         fig.legend(handles=handles, loc='lower center', bbox_to_anchor=(0.5, 0.97),
-                   ncol=len(handles), frameon=False, borderpad=0.6, handlelength=2.2,
-                   labelspacing=0.4, columnspacing=1.5)
+                   ncol=len(handles), frameon=False, borderpad=0.6, handlelength=1.5,
+                   labelspacing=0.3, columnspacing=1.2)
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.80)      # espacio para los multiplicadores ×10^e
@@ -609,9 +609,9 @@ def tests_post(R):
               f'{np.nanmax(np.abs(d["Evar"] - d["Efock"])):.2e}')
         print(f'[T7] {sector:4s} J/ω0={cv}:  máx. peso en los 5 últimos niveles de Fock = {np.nanmax(d["leak"]):.2e}')
         nk = int(np.sum(np.abs(d['X'][4:6]) > KAP_MAX - 1e-6))
-        neg = np.any(d['X'][4:6] < 0, axis=0)
+        neg = np.any(d['X'][4:6] < 1e-6, axis=0)
         print(f'[T7] {sector:4s} J/ω0={cv}:  κ ∈ [{np.nanmin(d["X"][4:6]):+.3f}, {np.nanmax(d["X"][4:6]):+.3f}]'
-              f'   puntos con |κ| en la cota ({KAP_MAX}) = {nk}   puntos con κ < 0 = {int(np.sum(neg))}'
+              f'   puntos con |κ| en la cota ({KAP_MAX}) = {nk}   puntos con κ en la cota inferior (0) = {int(np.sum(neg))}'
               + (f'   Λ = {np.array2string(LAM_F2[neg], precision=3, separator=", ")}' if neg.any() else ''))
         if sector == 'odd':
             print(f'[T8] odd  J/ω0={cv}:  máx|c↑ + c↓| (δ_o = 0) = {np.nanmax(np.abs(d["cu"] + d["cd"])):.2e}')
