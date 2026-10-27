@@ -3,6 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
+import sys
+import subprocess
+
+# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
+# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+if len(sys.argv) == 1:
+    for _sg in ('+1', '-1'):
+        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+    sys.exit(0)
+SIGN = int(sys.argv[1])
+
 plt.rcParams.update({
     'text.usetex': True,
     'text.latex.preamble': r'\usepackage{amsmath}\usepackage[utf8]{inputenc}',
@@ -27,7 +38,7 @@ plt.rcParams.update({
 # ══════════════════════════════════════════════════════════════════
 #  PARÁMETROS
 #  Cortes en θ a Λ fijo: exacto (marginal_negativities.py, marcadores) contra
-#  variacional (P+AP)S (marginal_negativities_variational.py, líneas). Rama Cat+.
+#  variacional (P+AP)S (marginal_negativities_variational.py, líneas). Rama SIGN.
 # ══════════════════════════════════════════════════════════════════
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC  = os.path.join(HERE, 'Figures', 'cat', 'data')
@@ -45,7 +56,7 @@ COL = dict(theta=0, d1=1, d2=2, n1=3, n2=4, EN=5, S=6, rk=7)
 
 
 def _load(kind, Lam):
-    f = os.path.join(SRC, f'marginal_negativity_vs_theta_{kind}_{Lam}.txt')
+    f = os.path.join(SRC, f'marginal_negativity_vs_theta_{kind}_sign{SIGN:+d}_{Lam}.txt')
     if not os.path.exists(f):
         print(f'  (no está {os.path.basename(f)}: se grafica sin él)')
         return None
@@ -111,7 +122,7 @@ h = [mlines.Line2D([], [], color='gray', marker='o', mfc='none', mew=1.2, ls='no
 axes[1, 1].legend(handles=h, **LEG)
 
 plt.tight_layout()
-name = 'cut_theta_marginal_entanglement_PAPS'
+name = f'cut_theta_marginal_entanglement_PAPS_sign{SIGN:+d}'
 for ext in ('jpg', 'svg'):
     fig.savefig(os.path.join(OUT, f'{name}.{ext}'), bbox_inches='tight',
                 transparent=False, dpi=300)

@@ -189,7 +189,7 @@ if __name__ == "__main__":
     omega0   = 1.0
     cv_val   = 1.0
     sector   = 'odd'
-    sign     = +1
+    SIGNS    = (+1, -1)          # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismo estado base
     nph_wig  = 85
     N_JOBS   = 128
 
@@ -198,8 +198,12 @@ if __name__ == "__main__":
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
-    OUTDIR = (f'cat_state_information_resources_exact_omega0{omega0:.1f}' f'_nL_{nLam}_nth_{nth}')
-    os.makedirs(OUTDIR, exist_ok=True)
+    HERE   = os.path.dirname(os.path.abspath(__file__))
+    OUTDIR = {sign: os.path.join(HERE, f'cat_state_information_resources_exact_sign{sign:+d}'
+                                       f'_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}')
+              for sign in SIGNS}
+    for d in OUTDIR.values():
+        os.makedirs(d, exist_ok=True)
 
     def _one_point(iL, ith):
         Lam = Lam_arr[iL]; th = theta_arr[ith]
@@ -209,50 +213,55 @@ if __name__ == "__main__":
         ev, evec, nph, n_ph = diagonalize_LF_sweet( M, cv_val, cv_val, omega0, omega0, g1, g2, sector=sector)
         gap = ev[1] - ev[0]
 
-        psi_ph, nph_f = exact_cat_bimodal(g1, g2, evec[:, 0], nph, n_ph, omega0, sign=sign, sector=sector, nph_out=nph_wig)
-
         xvec, pvec = wigner_grid(Lam)
-        d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(psi_ph, nph_f, xvec, pvec)
+        out = []
+        for sign in SIGNS:
+            psi_ph, nph_f = exact_cat_bimodal(g1, g2, evec[:, 0], nph, n_ph, omega0, sign=sign, sector=sector, nph_out=nph_wig)
+            d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(psi_ph, nph_f, xvec, pvec)
+            out.append((d1, d2, E_N, S, n1, n2, rk))
 
-        return iL, ith, d1, d2, E_N, S, n1, n2, rk, gap
+        return iL, ith, gap, out
 
     tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
-    print(f'Puntos: {len(tasks)}   ({nLam} Λ × {nth} θ)', flush=True)
+    print(f'Puntos: {len(tasks)}   ({nLam} Λ × {nth} θ) × ramas {SIGNS}', flush=True)
 
     _res = Parallel(n_jobs=N_JOBS, verbose=10)(delayed(_one_point)(iL, ith) for iL, ith in tasks)
 
-    d1_map  = np.full((nLam, nth), np.nan)
-    d2_map  = np.full((nLam, nth), np.nan)
-    EN_map  = np.full((nLam, nth), np.nan)
-    S_map   = np.full((nLam, nth), np.nan)
-    n1_map  = np.full((nLam, nth), np.nan)
-    n2_map  = np.full((nLam, nth), np.nan)
-    rk_map  = np.full((nLam, nth), np.nan)
-    gap_map = np.full((nLam, nth), np.nan)
+    for k_s, sign in enumerate(SIGNS):
+        d1_map  = np.full((nLam, nth), np.nan)
+        d2_map  = np.full((nLam, nth), np.nan)
+        EN_map  = np.full((nLam, nth), np.nan)
+        S_map   = np.full((nLam, nth), np.nan)
+        n1_map  = np.full((nLam, nth), np.nan)
+        n2_map  = np.full((nLam, nth), np.nan)
+        rk_map  = np.full((nLam, nth), np.nan)
+        gap_map = np.full((nLam, nth), np.nan)
 
-    for iL, ith, d1, d2, E_N, S, n1, n2, rk, gap in _res:
-        d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
-        EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
-        n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
-        rk_map[iL, ith] = rk; gap_map[iL, ith] = gap
+        for iL, ith, gap, out in _res:
+            d1, d2, E_N, S, n1, n2, rk = out[k_s]
+            d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
+            EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
+            n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
+            rk_map[iL, ith] = rk; gap_map[iL, ith] = gap
 
-    hdr = (f'mapa exacto (Lambda, theta) | filas = Lambda ({nLam}), ' f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, ' f'nph_wig={nph_wig}')
+        hdr = (f'mapa exacto (Lambda, theta) | filas = Lambda ({nLam}), ' f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, ' f'nph_wig={nph_wig}')
+        D = OUTDIR[sign]
 
-    np.savetxt(f'{OUTDIR}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
-    np.savetxt(f'{OUTDIR}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
-    np.savetxt(f'{OUTDIR}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/S.txt',      S_map,  fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/rank_eff.txt', rk_map, fmt='%.8e', header=hdr)
-    np.savetxt(f'{OUTDIR}/gap.txt',      gap_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
+        np.savetxt(f'{D}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
+        np.savetxt(f'{D}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/S.txt',      S_map,  fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/rank_eff.txt', rk_map, fmt='%.8e', header=hdr)
+        np.savetxt(f'{D}/gap.txt',      gap_map, fmt='%.8e', header=hdr)
 
-    print(f'Guardado en {OUTDIR}/')
-    print(f'  ∫W1 ∈ [{np.nanmin(n1_map):.6f}, {np.nanmax(n1_map):.6f}]')
-    print(f'  ∫W2 ∈ [{np.nanmin(n2_map):.6f}, {np.nanmax(n2_map):.6f}]')
-    print(f'  puntos con |∫W-1| > 1e-3 : {int(np.sum(np.abs(n1_map-1) > 1e-3))} de {n1_map.size}')
-    print(f'  E_N ∈ [{np.nanmin(EN_map):.4f}, {np.nanmax(EN_map):.4f}]   '
-          f'S ∈ [{np.nanmin(S_map):.4f}, {np.nanmax(S_map):.4f}]')
-    print(f'  rank_eff ∈ [{int(np.nanmin(rk_map))}, {int(np.nanmax(rk_map))}]')
+        print(f'Guardado en {D}/')
+        print(f'  ∫W1 ∈ [{np.nanmin(n1_map):.6f}, {np.nanmax(n1_map):.6f}]')
+        print(f'  ∫W2 ∈ [{np.nanmin(n2_map):.6f}, {np.nanmax(n2_map):.6f}]')
+        print(f'  puntos con |∫W-1| > 1e-3 : {int(np.sum(np.abs(n1_map-1) > 1e-3))} de {n1_map.size}')
+        print(f'  E_N ∈ [{np.nanmin(EN_map):.4f}, {np.nanmax(EN_map):.4f}]   '
+              f'S ∈ [{np.nanmin(S_map):.4f}, {np.nanmax(S_map):.4f}]')
+        print(f'  rank_eff ∈ [{int(np.nanmin(rk_map))}, {int(np.nanmax(rk_map))}]')

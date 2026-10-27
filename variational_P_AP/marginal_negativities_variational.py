@@ -87,7 +87,7 @@ def marginal_negativities_var(psi_ph, nph, xvec, pvec, fast=True):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  EJECUCIÓN — δ1, δ2, E_N y S vs θ (Λ fijo, VARIACIONAL (P+AP)S, rama Cat+)
+#  EJECUCIÓN — δ1, δ2, E_N y S vs θ (Λ fijo, VARIACIONAL (P+AP)S, ramas Cat+ y Cat−)
 #    θ ∈ (0, π);  λ1 = Λcosθ, λ2 = Λsinθ
 # ══════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     cv_val   = 1.0
     LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]      # los mismos Λ del exacto
     sector   = 'odd'
-    sign     = +1
+    SIGNS    = (+1, -1)           # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismos (η, r, κ)
     nph_wig  = 85                 # la misma base de sitio del exacto
     N_JOBS   = 128
     FAST_WIGNER = True            # False: wigner_dm_negativity del exacto (~10 min por θ en lugar de ~1 s)
@@ -113,35 +113,37 @@ if __name__ == "__main__":
     def _one_theta(Lam_fix, eta, r, k, th):
         lam1 = Lam_fix * np.cos(th)
         lam2 = Lam_fix * np.sin(th)
-        psi_ph = var_cat_bimodal(lam1, lam2, eta, r, nph_wig, sector=sector, sign=sign)
-        d1, d2, n1, n2, E_N, S, rk = marginal_negativities_var(
-            psi_ph, nph_wig, xvec, pvec, fast=FAST_WIGNER)
-        return k, d1, d2, n1, n2, E_N, S, rk
+        out = []
+        for sign in SIGNS:
+            psi_ph = var_cat_bimodal(lam1, lam2, eta, r, nph_wig, sector=sector, sign=sign)
+            out.append(marginal_negativities_var(psi_ph, nph_wig, xvec, pvec, fast=FAST_WIGNER))
+        return k, out
 
     for Lam_fix in LAM_LIST:
         # el funcional solo depende de Λ: una minimización para todo el corte
         E, (eta, r, kap) = minimize_cat(Lam_fix, cv_val)
         F = np.exp(-0.5*(Lam_fix - eta)**2*np.exp(2.0*r))
         o = (2.0*kap + (1.0 + kap*kap)*F)/(1.0 + kap*kap + 2.0*kap*F)
-        p_cat = 0.5*(1.0 + sign*o)
         print(f'Λ = {Lam_fix:.6f}:  η = {eta:.8f}  r = {r:.8f}  κ = {kap:.8f}  '
-              f'E = {E:.10f}  p_cat = {p_cat:.6f}', flush=True)
+              f'E = {E:.10f}  p_cat(+) = {0.5*(1.0 + o):.6f}  p_cat(−) = {0.5*(1.0 - o):.6f}', flush=True)
 
         _res = Parallel(n_jobs=N_JOBS, verbose=5)(
             delayed(_one_theta)(Lam_fix, eta, r, k, th) for k, th in enumerate(theta_arr))
 
-        _out = np.full((nth, 8), np.nan)
-        _out[:, 0] = theta_arr
-        for k, d1, d2, n1, n2, E_N, S, rk in _res:
-            _out[k, 1:] = (d1, d2, n1, n2, E_N, S, rk)
+        for k_s, sign in enumerate(SIGNS):
+            p_cat = 0.5*(1.0 + sign*o)
+            _out = np.full((nth, 8), np.nan)
+            _out[:, 0] = theta_arr
+            for k, out in _res:
+                _out[k, 1:] = out[k_s]
 
-        fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_PAPS_{Lam_fix}.txt')
-        np.savetxt(fname, _out, fmt='%.8e',
-                   header=(f'(P+AP)S, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}, '
-                           f'J/omega0={cv_val}, nph={nph_wig} | eta={eta:.10e} r={r:.10e} '
-                           f'kappa={kap:.10e} E={E:.10e} p_cat={p_cat:.10e}\n'
-                           'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
-        print(f'Guardado: {fname}')
-        print(f'  min ∫W1 = {np.nanmin(_out[:, 3]):.6f}   min ∫W2 = {np.nanmin(_out[:, 4]):.6f}')
+            fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_PAPS_sign{sign:+d}_{Lam_fix}.txt')
+            np.savetxt(fname, _out, fmt='%.8e',
+                       header=(f'(P+AP)S, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}, '
+                               f'J/omega0={cv_val}, nph={nph_wig} | eta={eta:.10e} r={r:.10e} '
+                               f'kappa={kap:.10e} E={E:.10e} p_cat={p_cat:.10e}\n'
+                               'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
+            print(f'Guardado: {fname}')
+            print(f'  min ∫W1 = {np.nanmin(_out[:, 3]):.6f}   min ∫W2 = {np.nanmin(_out[:, 4]):.6f}')
 
     print("Barrido marginal θ (P+AP)S listo.")

@@ -3,6 +3,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
+import sys
+import subprocess
+
+# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
+# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+if len(sys.argv) == 1:
+    for _sg in ('+1', '-1'):
+        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+    sys.exit(0)
+SIGN = int(sys.argv[1])
+
 plt.rcParams.update({
     'text.usetex': True,
     'text.latex.preamble': r'\usepackage{amsmath}\usepackage[utf8]{inputenc}',
@@ -34,18 +45,18 @@ CMAP   = 'inferno'
 
 # malla de cada conjunto de datos
 nLam_ex,  nth_ex  = 200, 200     # exacto (mapas viejos, carpeta KitaevHolstein)
-nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama Cat+ (sign=+1)
+nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama SIGN
 
 LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2), 4*np.sqrt(2)]
 LAM_LAB  = [r'2\sqrt{2}', r'3\sqrt{2}', r'4\sqrt{2}']
 
 SRC_EX  = os.path.join(HERE, '..',
-                       f'cat_state_information_resources_exact_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_exact_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam_ex}_nth_{nth_ex}')
 SRC_VAR = os.path.join(HERE, 'Figures', 'cat', 'data',
-                       f'cat_state_information_resources_PAPS_sign+1_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_PAPS_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam_var}_nth_{nth_var}')
-TAG = f'nLex{nLam_ex}_nLvar{nLam_var}_PAPS'
+TAG = f'nLex{nLam_ex}_nLvar{nLam_var}_PAPS_sign{SIGN:+d}'
 os.makedirs(OUT, exist_ok=True)
 
 

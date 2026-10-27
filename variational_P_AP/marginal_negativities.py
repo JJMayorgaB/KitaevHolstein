@@ -328,7 +328,7 @@ if __name__ == "__main__":
     cv_val   = 1.0
     LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]      # Λ fijos
     sector   = 'odd'
-    sign     = +1
+    SIGNS    = (+1, -1)           # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismo estado base
     nph_wig  = 85
     N_JOBS   = 128                # cores a usar
     DENSE_EIGH = False            # True: eigh denso de ambos sectores (diagonalize_LF_sweet, ~5 GB por job)
@@ -342,17 +342,24 @@ if __name__ == "__main__":
 
     HERE   = os.path.dirname(os.path.abspath(__file__))
     OUTDIR = os.path.join(HERE, 'Figures', 'cat', 'data')
-    TMPDIR = {L: os.path.join(OUTDIR, f'_tmp_exact_{L:.6f}') for L in LAM_LIST}
+    TMPDIR = {(L, sg): os.path.join(OUTDIR, f'_tmp_exact_sign{sg:+d}_{L:.6f}')
+              for L in LAM_LIST for sg in SIGNS}
     for d in TMPDIR.values():
         os.makedirs(d, exist_ok=True)
 
-    def _one_theta(Lam_fix, k, th):
-        # si ya está en el guardado incremental (relanzamiento), no se repite
-        f_tmp = os.path.join(TMPDIR[Lam_fix], f'{k:03d}.txt')
+    def _load_tmp(f_tmp, th):
         if os.path.exists(f_tmp):
             row = np.loadtxt(f_tmp).ravel()
-            if row.size == 8 and abs(row[0] - th) < 1e-6:
-                return (Lam_fix, k) + tuple(row[1:])
+            if row.size == 8 and abs(row[0] - th) < 1e-6:      # θ guardado con 8 cifras
+                return tuple(row[1:])
+        return None
+
+    def _one_theta(Lam_fix, k, th):
+        # si ambas ramas ya están en el guardado incremental (relanzamiento), no se repite
+        f_tmp = {sg: os.path.join(TMPDIR[(Lam_fix, sg)], f'{k:03d}.txt') for sg in SIGNS}
+        done  = {sg: _load_tmp(f_tmp[sg], th) for sg in SIGNS}
+        if all(v is not None for v in done.values()):
+            return Lam_fix, k, done
 
         g1 = Lam_fix * np.cos(th)
         g2 = Lam_fix * np.sin(th)
@@ -365,45 +372,43 @@ if __name__ == "__main__":
             _, vec, nph, n_ph = ground_state_LF_sweet(
                 M, cv_val, cv_val, omega0, omega0, g1, g2, sector=sector)
 
-        # padding ANTES de los desplazamientos
-        psi_ph, nph_f = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
-                                          sign=sign, sector=sector,
-                                          nph_out=nph_wig)
+        for sign in SIGNS:
+            if done[sign] is not None:
+                continue
+            # padding ANTES de los desplazamientos
+            psi_ph, nph_f = exact_cat_bimodal(g1, g2, vec, nph, n_ph, omega0,
+                                              sign=sign, sector=sector,
+                                              nph_out=nph_wig)
 
-        d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(
-            psi_ph, nph_f, xvec, pvec, n_jobs=1)   # serial adentro
+            d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(
+                psi_ph, nph_f, xvec, pvec, n_jobs=1)   # serial adentro
 
-        # guardado incremental: si el job muere, no se pierde lo avanzado
-        np.savetxt(f_tmp, np.array([[th, d1, d2, n1, n2, E_N, S, rk]]), fmt='%.8e')
+            # guardado incremental: si el job muere, no se pierde lo avanzado
+            np.savetxt(f_tmp[sign], np.array([[th, d1, d2, n1, n2, E_N, S, rk]]), fmt='%.8e')
+            done[sign] = (d1, d2, n1, n2, E_N, S, rk)
 
-        print(f"  Λ={Lam_fix:.4f}  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  E_N={E_N:.4f} S={S:.4f}  "
-              f"rank={rk}  (∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
-        return Lam_fix, k, d1, d2, n1, n2, E_N, S, rk
+            print(f"  Λ={Lam_fix:.4f}  sign={sign:+d}  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  "
+                  f"E_N={E_N:.4f} S={S:.4f}  rank={rk}  (∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
+        return Lam_fix, k, done
 
     tasks = [(L, k, th) for L in LAM_LIST for k, th in enumerate(theta_arr)]
-    print(f'Tareas: {len(tasks)}   ({len(LAM_LIST)} Λ × {nth} θ)', flush=True)
+    print(f'Tareas: {len(tasks)}   ({len(LAM_LIST)} Λ × {nth} θ), ramas {SIGNS} en cada una', flush=True)
 
     _res = Parallel(n_jobs=N_JOBS, verbose=10)(
         delayed(_one_theta)(L, k, th) for L, k, th in tasks)
 
     for Lam_fix in LAM_LIST:
-        d1_arr = np.full(nth, np.nan); d2_arr = np.full(nth, np.nan)
-        n1_arr = np.full(nth, np.nan); n2_arr = np.full(nth, np.nan)
-        EN_arr = np.full(nth, np.nan); S_arr  = np.full(nth, np.nan)
-        rk_arr = np.full(nth, np.nan)
+        for sign in SIGNS:
+            _out = np.full((nth, 8), np.nan)
+            _out[:, 0] = theta_arr
+            for L, k, done in _res:
+                if L == Lam_fix:
+                    _out[k, 1:] = done[sign]
 
-        for L, k, d1, d2, n1, n2, E_N, S, rk in _res:
-            if L != Lam_fix:
-                continue
-            d1_arr[k] = d1; d2_arr[k] = d2; n1_arr[k] = n1; n2_arr[k] = n2
-            EN_arr[k] = E_N; S_arr[k] = S; rk_arr[k] = rk
-
-        _out = np.column_stack([theta_arr, d1_arr, d2_arr, n1_arr, n2_arr,
-                                EN_arr, S_arr, rk_arr])
-        fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_exact_{Lam_fix}.txt')
-        np.savetxt(fname, _out, fmt='%.8e',
-                   header=(f'exacto, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}\n'
-                           'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
-        print(f'Guardado: {fname}')
+            fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_exact_sign{sign:+d}_{Lam_fix}.txt')
+            np.savetxt(fname, _out, fmt='%.8e',
+                       header=(f'exacto, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}\n'
+                               'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
+            print(f'Guardado: {fname}')
 
     print("Barrido marginal θ (exacto) listo.")

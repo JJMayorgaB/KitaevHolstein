@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
 
+import sys
+import subprocess
+
+# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
+# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+if len(sys.argv) == 1:
+    for _sg in ('+1', '-1'):
+        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+    sys.exit(0)
+SIGN = int(sys.argv[1])
+
 plt.rcParams.update({
     'text.usetex': True,
     'text.latex.preamble': r'\usepackage{amsmath}\usepackage[utf8]{inputenc}',
@@ -34,15 +45,15 @@ OUT    = os.path.join(HERE, 'Figures', 'cat')
 CMAP   = 'inferno'
 
 nLam_ex,  nth_ex  = 200, 200     # exacto (mapas viejos, carpeta KitaevHolstein)
-nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama Cat+ (sign=+1)
+nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama SIGN
 
 SRC_EX  = os.path.join(HERE, '..',
-                       f'cat_state_information_resources_exact_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_exact_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam_ex}_nth_{nth_ex}')
 SRC_VAR = os.path.join(HERE, 'Figures', 'cat', 'data',
-                       f'cat_state_information_resources_PAPS_sign+1_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_PAPS_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam_var}_nth_{nth_var}')
-TAG = f'compare_nLex{nLam_ex}_nLvar{nLam_var}_PAPS'
+TAG = f'compare_nLex{nLam_ex}_nLvar{nLam_var}_PAPS_sign{SIGN:+d}'
 os.makedirs(OUT, exist_ok=True)
 
 

@@ -4,6 +4,17 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.gridspec as gridspec
 
+import sys
+import subprocess
+
+# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
+# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+if len(sys.argv) == 1:
+    for _sg in ('+1', '-1'):
+        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+    sys.exit(0)
+SIGN = int(sys.argv[1])
+
 plt.rcParams.update({
     'text.usetex': True,
     'text.latex.preamble': r'\usepackage{amsmath}\usepackage[utf8]{inputenc}',
@@ -29,7 +40,7 @@ plt.rcParams.update({
 #  PARÁMETROS — etiquetas del nombre de la carpeta de datos
 # ══════════════════════════════════════════════════════════════════
 omega0 = 1.0
-KIND   = 'var'            # 'var' (variacional (P+AP)S, rama Cat+) o 'exact' (mapas viejos)
+KIND   = 'var'            # 'var' (variacional (P+AP)S) o 'exact'
 HERE   = os.path.dirname(os.path.abspath(__file__))
 OUT    = os.path.join(HERE, 'Figures', 'cat')
 CMAP   = 'inferno'
@@ -37,15 +48,15 @@ CMAP   = 'inferno'
 if KIND == 'var':
     nLam, nth = 300, 300
     SRC = os.path.join(HERE, 'Figures', 'cat', 'data',
-                       f'cat_state_information_resources_PAPS_sign+1_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_PAPS_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam}_nth_{nth}')
-    TAG = f'{KIND}_nL{nLam}_nth{nth}_PAPS'
+    TAG = f'{KIND}_nL{nLam}_nth{nth}_PAPS_sign{SIGN:+d}'
 else:
     nLam, nth = 200, 200
     SRC = os.path.join(HERE, '..',
-                       f'cat_state_information_resources_exact_omega0{omega0:.1f}'
+                       f'cat_state_information_resources_exact_sign{SIGN:+d}_omega0{omega0:.1f}'
                        f'_nL_{nLam}_nth_{nth}')
-    TAG = f'{KIND}_nL{nLam}_nth{nth}'
+    TAG = f'{KIND}_nL{nLam}_nth{nth}_sign{SIGN:+d}'
 os.makedirs(OUT, exist_ok=True)
 
 # ── carga ─────────────────────────────────────────────────────────
