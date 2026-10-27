@@ -6,6 +6,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 import numpy as np
 from scipy.special import factorial, eval_genlaguerre
 from scipy.linalg import eigh
+from scipy.sparse.linalg import LinearOperator, eigsh
 from joblib import Parallel, delayed
 import qutip as qt
 import warnings
@@ -53,11 +54,42 @@ def build_LF_hamiltonian_sweet(M, t, Delta, omega1, omega2, g1, g2, sector='even
     return H, nph, n_ph
 
 
+DENSE_EIGH = False     # True: eigh denso completo (original);  False: Lanczos, dos estados más bajos
+
+
 def diagonalize_LF_sweet(M, t, Delta, omega1, omega2, g1, g2, sector='even'):
-    """Construye y diagonaliza SOLO el sector pedido."""
-    H, nph, n_ph = build_LF_hamiltonian_sweet(M, t, Delta, omega1, omega2, g1, g2, sector=sector)
-    ev, evec = eigh(H)
-    return ev, evec, nph, n_ph
+    """Construye y diagonaliza SOLO el sector pedido.
+    Con DENSE_EIGH = False usa Lanczos (eigsh) sobre el MISMO Hamiltoniano, sin matrices densas:
+    el bloque fuera de la diagonal T = A⊗B se aplica como (A⊗B) vec(X) = vec(A X Bᵀ)
+    (idx = m1*nph + m2), y devuelve solo los dos estados más bajos (ev[0], ev[1], evec[:, 0..1]),
+    que es lo que se usa (estado base y gap)."""
+    if DENSE_EIGH:
+        H, nph, n_ph = build_LF_hamiltonian_sweet(M, t, Delta, omega1, omega2, g1, g2, sector=sector)
+        ev, evec = eigh(H)
+        return ev, evec, nph, n_ph
+
+    nph  = M + 1
+    n_ph = nph * nph
+    lam1 = g1 / omega1; lam2 = g2 / omega2
+    ph_E = np.array([m1*omega1 + m2*omega2
+                     for m1 in range(nph) for m2 in range(nph)])
+    if sector == 'even':
+        A = Delta * disp_matrix(M, -lam1); B = disp_matrix(M, -lam2)
+    else:
+        A = t     * disp_matrix(M,  lam1); B = disp_matrix(M, -lam2)
+
+    def _mv(v):
+        v  = np.asarray(v).ravel()
+        p1 = v[:n_ph]; p2 = v[n_ph:]
+        top = ph_E*p1 + (A @ p2.reshape(nph, nph) @ B.T).ravel()      # diag·φ1 + T φ2
+        bot = ph_E*p2 + (A.T @ p1.reshape(nph, nph) @ B).ravel()      # Tᵀ φ1 + diag·φ2
+        return np.concatenate([top, bot])
+
+    H  = LinearOperator((2*n_ph, 2*n_ph), matvec=_mv, dtype=float)
+    v0 = np.ones(2*n_ph) / np.sqrt(2*n_ph)
+    ev, evec = eigsh(H, k=2, which='SA', tol=0.0, v0=v0, ncv=40, maxiter=100000)
+    idx = np.argsort(ev)
+    return ev[idx], evec[:, idx], nph, n_ph
 
 
 def pad_state(psi_ph, nph_old, nph_new):
@@ -87,8 +119,8 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
     P1 = phi1.reshape(nph, nph)
     P2 = phi2.reshape(nph, nph)
 
-    if sector == 'even':
-        catm = (D1p @ P2 @ D2p.T) + (-sign)*(D1m @ P1 @ D2m.T)
+    if sector == 'even':          # φ1 = |00>: (+λ1/2, +λ2/2)   φ2 = |11>: (-λ1/2, -λ2/2)
+        catm = (D1p @ P1 @ D2p.T) + (-sign)*(D1m @ P2 @ D2m.T)
     else:
         catm = (D1p @ P2 @ D2m.T) + (-sign)*(D1m @ P1 @ D2p.T)
 
@@ -156,7 +188,7 @@ if __name__ == "__main__":
 
     omega0   = 1.0
     cv_val   = 1.0
-    sector   = 'even'
+    sector   = 'odd'
     sign     = +1
     nph_wig  = 85
     N_JOBS   = 128

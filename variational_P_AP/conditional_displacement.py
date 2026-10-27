@@ -22,9 +22,24 @@ from joblib import Parallel, delayed
 
 warnings.filterwarnings('ignore')
 
+# Derivadas exactas (JAX) para el pulido de Newton y la continuación de variación mínima.
+# Si JAX no está instalado, el script corre igual que antes (sin pulido ni variación mínima).
+os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+os.environ.setdefault('XLA_FLAGS', '--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1')
+try:
+    import jax
+    jax.config.update('jax_enable_x64', True)
+    import jax.numpy as jnp
+    HAS_JAX = True
+except Exception:
+    HAS_JAX = False
+
 
 #  PARÁMETROS
 N_JOBS  = -1
+POLISH        = True           # pulido de Newton amortiguado (∇E y H exactos) tras L-BFGS-B
+MIN_VARIATION = True           # continuación de variación mínima en Λ (valles planos)
+MV_DELTA_REL  = 1e-12          # holgura en energía de la variación mínima: E ≤ E* + MV_DELTA_REL·|E*|
 omega0  = 1.0
 eps_tilde = 0.0                                   # ε̃_+
 cv_list = [0.5, 1.0, 1.5]                         # J_α/ω0
@@ -170,8 +185,126 @@ def energy_paps_fock(x, Lam, J, ops):
     return eps_tilde + omega0*(pu @ (ops.nvec*pu)) - J*abs(T)
 
 
-def minimize_paps(Lam, J, x_warm=None):
-    """(P+AP)S: minimiza E(η, r, κ) cerrado con κ ∈ [0, KAP_MAX]."""
+#  DERIVADAS EXACTAS (JAX): el MISMO funcional cerrado que energy_paps
+def energy_paps_jax(x, Lam, J):
+    eta, r, kap = x[0], x[1], x[2]
+    F   = jnp.exp(-0.5*(Lam - eta)**2*jnp.exp(2.0*r))
+    sh2 = jnp.sinh(r)**2
+    G   = (0.25*Lam**2 - 0.25*(Lam - eta)**2*jnp.exp(4.0*r) + sh2)*F
+    den = 1.0 + kap**2 + 2.0*kap*F
+    num = (omega0*(0.25*eta**2 + (1.0 + kap**2)*sh2 + kap**2*(Lam - 0.5*eta)**2 + 2.0*kap*G)
+           - J*jnp.abs(2.0*kap + (1.0 + kap**2)*F))
+    return eps_tilde + num/den
+
+
+_AD_CACHE = {}
+
+
+def _ad():
+    """(E, ∇E, H) exactos y compilados del funcional cerrado."""
+    if 'f' not in _AD_CACHE:
+        f = energy_paps_jax
+        _AD_CACHE['f'] = (jax.jit(f), jax.jit(jax.grad(f)), jax.jit(jax.hessian(f)))
+    return _AD_CACHE['f']
+
+
+def _polish_newton(fun, x, args, bnd, itmax=40):
+    """Newton amortiguado (Levenberg–Marquardt) con ∇E y H exactos, en las variables libres.
+    Solo acepta pasos que bajan la energía (evaluada con el funcional numpy)."""
+    _, g_f, H_f = _ad()
+    lo = np.array([b[0] for b in bnd]); hi = np.array([b[1] for b in bnd])
+    x = np.clip(np.asarray(x, float), lo, hi)
+    E = fun(x, *args)
+    mu = None
+    for _ in range(itmax):
+        g = np.asarray(g_f(x, *args), float)
+        H = np.asarray(H_f(x, *args), float); H = 0.5*(H + H.T)
+        free = ~(((x <= lo + 1e-12) & (g > 0)) | ((x >= hi - 1e-12) & (g < 0)))
+        if not free.any() or np.max(np.abs(g[free])) < 1e-14:
+            break
+        Hf, gf = H[np.ix_(free, free)], g[free]
+        scale = max(float(np.max(np.abs(np.diag(Hf)))), 1e-300)
+        mu = 1e-8*scale if mu is None else mu
+        accepted = False
+        for _ in range(40):
+            try:
+                d = -np.linalg.solve(Hf + mu*np.eye(len(gf)), gf)
+            except np.linalg.LinAlgError:
+                mu *= 10.0
+                continue
+            xn = x.copy(); xn[free] += d; xn = np.clip(xn, lo, hi)
+            En = fun(xn, *args)
+            if np.isfinite(En) and En < E:
+                x, E, accepted = xn, En, True
+                mu = max(0.1*mu, 1e-16*scale)
+                break
+            mu *= 10.0
+        if not accepted:
+            break
+    return E, x
+
+
+def _min_variation(fun, x_star, E_star, x_prev, args, bnd):
+    """Entre los x con E(x) ≤ E* + δ (δ = MV_DELTA_REL·|E*|), el más cercano al punto anterior
+    de la continuación. SLSQP arranca desde x* y desde el punto anterior y se queda con la
+    solución factible más cercana a este."""
+    _, g_f, _ = _ad()
+    lo = np.array([b[0] for b in bnd]); hi = np.array([b[1] for b in bnd])
+    s = np.array([1.0, 0.1, 0.1])                     # escalas de (η, r, κ)
+    xp = np.asarray(x_prev, float)
+    delta = max(MV_DELTA_REL*abs(E_star), 1e-14)
+    cons = {'type': 'ineq',
+            'fun': lambda x: (E_star + delta - fun(x, *args))/delta,
+            'jac': lambda x: -np.asarray(g_f(x, *args), float)/delta}
+    best = (np.inf, E_star, np.asarray(x_star, float))
+    for x0 in (np.asarray(x_star, float), np.clip(xp, lo, hi)):     # desde el óptimo y desde el punto anterior
+        try:
+            res = minimize(lambda x: np.sum(((x - xp)/s)**2), x0,
+                           jac=lambda x: 2.0*(x - xp)/s**2, method='SLSQP', bounds=bnd,
+                           constraints=[cons], options={'ftol': 1e-14, 'maxiter': 300})
+            x = np.clip(res.x, lo, hi)
+            E = fun(x, *args)
+        except Exception:
+            continue
+        dist = np.sum(((x - xp)/s)**2)
+        if np.isfinite(E) and E <= E_star + 1.01*delta and dist < best[0]:
+            best = (dist, E, x)
+    return best[1], best[2]
+
+
+def _postprocess(fun, E, x, x_warm, args, bnd, info):
+    """Pulido de Newton y, con punto anterior, variación mínima. info recibe E y x previos."""
+    E_raw, x_raw = E, np.array(x, float)
+    if HAS_JAX and POLISH:
+        E, x = _polish_newton(fun, x, args, bnd)
+    E_pol = E
+    if HAS_JAX and MIN_VARIATION and x_warm is not None:
+        E, x = _min_variation(fun, x, E, np.asarray(x_warm[:3], float), args, bnd)
+    if info is not None:
+        info.update(E_raw=E_raw, x_raw=x_raw, E_pol=E_pol)
+    return E, x
+
+
+def _jax_selftest(fun, bnd_of, s_val, rng):
+    """máx|E_JAX − E_numpy| y máx|∇E_JAX − ∇E_FD| en puntos aleatorios dentro de las cotas."""
+    E_j, g_j, _ = _ad()
+    dE = dg = 0.0
+    for Lam in (0.5, 2.0, 3.5, 5.0):
+        b = bnd_of(Lam)
+        lo = np.array([v[0] for v in b]); hi = np.array([v[1] for v in b])
+        for _ in range(30):
+            x = lo + (hi - lo)*rng.random(3)
+            dE = max(dE, abs(float(E_j(x, Lam, s_val)) - fun(x, Lam, s_val)))
+            h = 1e-6
+            gfd = np.array([(fun(x + h*e, Lam, s_val) - fun(x - h*e, Lam, s_val))/(2*h) for e in np.eye(3)])
+            dg = max(dg, float(np.max(np.abs(np.asarray(g_j(x, Lam, s_val)) - gfd))))
+    return dE, dg
+
+
+def minimize_paps(Lam, J, x_warm=None, info=None):
+    """(P+AP)S: minimiza E(η, r, κ) cerrado con κ ∈ [0, KAP_MAX].
+    Después de L-BFGS-B (con JAX): pulido de Newton y, si hay punto anterior (x_warm),
+    continuación de variación mínima. 'info' (opcional) recibe E y x antes de ambos pasos."""
     bnd = [(-1.0, 2.0*Lam + 1.0), (-1.0, 0.0), (0.0, KAP_MAX)]
     seeds = [(e, r, k) for e in (0.0, Lam, 2.0*Lam) for r in (0.0, -0.2) for k in (0.1, 0.6, 0.0)]
     if x_warm is None:
@@ -186,7 +319,7 @@ def minimize_paps(Lam, J, x_warm=None):
                        options={'ftol': 1e-15, 'gtol': 1e-11, 'maxiter': 1000})
         if res.fun < bestE:
             bestE, bestx = res.fun, res.x
-    return bestE, bestx
+    return _postprocess(energy_paps, bestE, bestx, x_warm, (Lam, J), bnd, info)
 
 
 def conditional_moments(phi, b):
@@ -206,7 +339,8 @@ def sweep(J, Lam_arr=LAM_ARR):
     n = len(Lam_arr)
     out = {k: np.full(n, np.nan) for k in
            ('b_ex', 'b_ex_dn', 'var_ex', 'E_ex', 'b_paps', 'var_paps', 'E_paps', 'kappa',
-            'E_paps_fock', 'tail', 'b_paps_fock')}
+            'E_paps_fock', 'tail', 'b_paps_fock',
+            'eta', 'r', 'E_raw', 'E_pol', 'eta_raw', 'r_raw', 'kap_raw', 'b_raw')}
     w_paps = None
     for k, Lam in enumerate(Lam_arr):
         M   = _Mof_Lam(Lam)
@@ -224,8 +358,14 @@ def sweep(J, Lam_arr=LAM_ARR):
         out['b_ex'][k], out['var_ex'][k] = conditional_moments(vec[:n1], ops.b)
         out['b_ex_dn'][k], _             = conditional_moments(vec[n1:], ops.b)
         # variacional (P+AP) S (funcional cerrado)
-        E, x = minimize_paps(Lam, J, w_paps); w_paps = x
+        info = {}
+        E, x = minimize_paps(Lam, J, w_paps, info); w_paps = x
         out['E_paps'][k], out['kappa'][k] = E, x[2]
+        out['eta'][k], out['r'][k] = x[0], x[1]
+        # antes del pulido y de la variación mínima (solo para el test D8)
+        out['E_raw'][k], out['E_pol'][k] = info['E_raw'], info['E_pol']
+        out['eta_raw'][k], out['r_raw'][k], out['kap_raw'][k] = info['x_raw']
+        out['b_raw'][k] = mean_b_paps(info['x_raw'], Lam)
         pu = state_paps(x, Lam, ops)
         out['b_paps_fock'][k], out['var_paps'][k] = conditional_moments(pu, ops.b)
         out['b_paps'][k] = mean_b_paps(x, Lam)
@@ -345,6 +485,13 @@ if __name__ == '__main__':
         R[J] = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
 
     print('\nTESTS')
+    if HAS_JAX:
+        dE, dg = _jax_selftest(energy_paps, lambda L: [(-1.0, 2.0*L + 1.0), (-1.0, 0.0), (0.0, KAP_MAX)],
+                               1.0, np.random.default_rng(11))
+        print(f'[D7] máx|E_JAX - E_numpy| = {dE:.2e}   máx|∇E_JAX - ∇E_FD| = {dg:.2e}   '
+              f'(pulido = {POLISH}, variación mínima = {MIN_VARIATION}, δ = {MV_DELTA_REL:.0e}·|E*|)')
+    else:
+        print('[D7] JAX no está instalado: se omiten el pulido de Newton y la variación mínima')
     for J in cv_list:
         d = R[J]
         print(f'[D1] J/ω0={J}:  máx|<b>_↑ + <b>_↓| exacto = {np.nanmax(np.abs(d["b_ex"] + d["b_ex_dn"])):.2e}')
@@ -363,6 +510,12 @@ if __name__ == '__main__':
         print(f'[D5] J/ω0={J}:  puntos con κ en la cota inferior (0) = {int(np.sum(low))}'
               + (f'   Λ = {np.array2string(LAM_ARR[low], precision=3, separator=", ")}' if low.any() else ''))
         print(f'[D6] J/ω0={J}:  máx|<b†>_↑ cerrado − <b†>_↑ Fock| = {np.nanmax(np.abs(d["b_paps"] - d["b_paps_fock"])):.2e}')
+        tv = lambda y: np.nansum(np.abs(np.diff(y)))
+        print(f'[D8] J/ω0={J}:  E_pol - E_LBFGSB ∈ [{np.nanmin(d["E_pol"] - d["E_raw"]):+.1e}, {np.nanmax(d["E_pol"] - d["E_raw"]):+.1e}]'
+              f'   máx (E - E_pol)/|E_pol| = {np.nanmax((d["E_paps"] - d["E_pol"])/np.abs(d["E_pol"])):.1e}'
+              f'   máx|Δ<b†>_↑| = {np.nanmax(np.abs(d["b_paps"] - d["b_raw"])):.1e}'
+              f'   variación total η: {tv(d["eta_raw"]):.3g} -> {tv(d["eta"]):.3g}'
+              f'  r: {tv(d["r_raw"]):.3g} -> {tv(d["r"]):.3g}  κ: {tv(d["kap_raw"]):.3g} -> {tv(d["kappa"]):.3g}')
 
     plot_mean(R)
     plot_var(R)

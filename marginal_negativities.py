@@ -276,8 +276,8 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
     P1 = phi1.reshape(nph, nph)
     P2 = phi2.reshape(nph, nph)
 
-    if sector == 'even':          # φ2: (+λ1/2, +λ2/2)   φ1: (-λ1/2, -λ2/2)
-        catm = (D1p @ P2 @ D2p.T) + (-sign)*(D1m @ P1 @ D2m.T)
+    if sector == 'even':          # φ1 = |00>: (+λ1/2, +λ2/2)   φ2 = |11>: (-λ1/2, -λ2/2)
+        catm = (D1p @ P1 @ D2p.T) + (-sign)*(D1m @ P2 @ D2m.T)
     else:                         # φ2: (+λ1/2, -λ2/2)   φ1: (-λ1/2, +λ2/2)
         catm = (D1p @ P2 @ D2m.T) + (-sign)*(D1m @ P1 @ D2p.T)
 
@@ -295,7 +295,7 @@ if __name__ == "__main__":
     omega0   = 1.0
     cv_val   = 1.0
     Lam_fix  = 2*np.sqrt(2)       # Λ fijo
-    sector   = 'even'
+    sector   = 'odd'
     sign     = +1
     nph_wig  = 85
     N_JOBS   = 32                 # cores a usar

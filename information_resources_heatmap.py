@@ -61,7 +61,7 @@ def cat_bimodal(lam1, lam2, cv, N, sector='even', sign=+1, r_thresh=1e-5):
         c1  = (lam1/Lam)**2
         c2  = (lam2/Lam)**2
         c12 = 2.0*lam1*lam2/Lam**2
-        sgn_tm = +1.0 if sector == 'odd' else -1.0
+        sgn_tm = +1.0 if sector == 'even' else -1.0     # par: S_c (modo A_e), impar: S_r (modo a_o)
         G = c1*(a1**2 - a1.dag()**2) + c2*(a2**2 - a2.dag()**2) \
             + sgn_tm * c12 * (a1*a2 - a1.dag()*a2.dag())
         S = ((r/2.0) * G).expm()
@@ -126,7 +126,7 @@ def wigner_grid(Lam, n_x=301, n_p=251, x_pad=5.0, p_half=4.0):
 if __name__ == "__main__":
 
     cv_val   = 1.0
-    sector   = 'even'
+    sector   = 'odd'
     sign     = +1
     N_FOCK   = 40
     r_thresh = 1e-5

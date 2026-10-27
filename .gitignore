@@ -27,6 +27,9 @@ paper_figures/
 # Archivos de datos sueltos
 *.npy
 *.txt
+*.json
+*.png
+*.csv
 
 #notebooks
 *.ipynb

@@ -27,6 +27,12 @@ con F y G↑, G↓ cerrados (ver _F_G). En δ_α = 0 (ε = ε') se usa la reducc
 Rabi η↑ = −η↓ = η/2, r↑ = r↓ = r, κ↑ = κ↓ = κ y el funcional reducido E(η, r, κ).
 El vector en Fock solo se construye con los parámetros óptimos (fidelidad, pesos, tests).
 
+Después de L-BFGS-B (si JAX está instalado; si no, se omiten):
+  * pulido de Newton amortiguado con ∇E y H exactos (JAX) -> mínimo a precisión de máquina;
+  * continuación de variación mínima: entre los x con E(x) ≤ E* + MV_DELTA_REL·|E*|, el más
+    cercano al punto anterior del barrido en Λ. Solo actúa en los valles casi planos
+    (p. ej. κ↓, η↓ en el sector par), donde la energía no fija los parámetros.
+
 Figuras: parámetros óptimos y fidelidad / error relativo por sector (sufijo _PAPS),
 guardadas en Figures/anstaz/.
 """
@@ -49,9 +55,25 @@ from joblib import Parallel, delayed
 
 warnings.filterwarnings('ignore')
 
+# Derivadas exactas (JAX) para el pulido de Newton y la continuación de variación mínima.
+# Si JAX no está instalado, el script corre igual que antes (sin pulido ni variación mínima).
+os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+os.environ.setdefault('XLA_FLAGS', '--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1')
+try:
+    import jax
+    jax.config.update('jax_enable_x64', True)
+    import jax.numpy as jnp
+    HAS_JAX = True
+except Exception:
+    HAS_JAX = False
+
 #  PARÁMETROS
 
 N_JOBS   = -1                  # núcleos para joblib (-1 = todos)
+
+POLISH        = True           # pulido de Newton amortiguado (∇E y H exactos) tras L-BFGS-B
+MIN_VARIATION = True           # continuación de variación mínima en Λ (valles planos)
+MV_DELTA_REL  = 1e-12          # holgura en energía de la variación mínima: E ≤ E* + MV_DELTA_REL·|E*|
 
 omega0   = 1.0
 eps1_val = 0.25
@@ -338,22 +360,145 @@ def _run_seeds(fun, args, Lam, n_par, x_warm, sector):
     return bestE, bestx
 
 
+#  DERIVADAS EXACTAS (JAX): el MISMO funcional cerrado que energy_closed / energy_closed_sym
+def _energy_closed_jax(x, eps, epsp, J, Lam):
+    eu, ed, ru, rd, ku, kd = x[0], x[1], x[2], x[3], x[4], x[5]
+    Dl = Lam + ed - eu
+    ch = jnp.cosh(ru - rd)
+    F  = jnp.exp(-Dl**2/(jnp.exp(-2.0*ru) + jnp.exp(-2.0*rd)))/jnp.sqrt(ch)
+    su, sd = jnp.sinh(ru), jnp.sinh(rd)
+    au = Dl*jnp.exp(rd)*su/ch
+    ad = Dl*jnp.exp(ru)*sd/ch
+    Gu = F*((eu - au)*(ed + Lam + ad) + su*sd/ch)
+    Gd = F*((ed + ad)*(eu - Lam - au) + su*sd/ch)
+    nu = 1.0 + ku*ku + 2.0*ku*F
+    nd = 1.0 + kd*kd + 2.0*kd*F
+    A = eps  + omega0*(eu*eu + su**2 + ku*ku*((ed + Lam)**2 + sd**2) + 2.0*ku*Gu)/nu
+    B = epsp + omega0*(ed*ed + sd**2 + kd*kd*((eu - Lam)**2 + su**2) + 2.0*kd*Gd)/nd
+    T = J*(ku + kd + (1.0 + ku*kd)*F)/jnp.sqrt(nu*nd)
+    return 0.5*(A + B) - jnp.sqrt(0.25*(A - B)**2 + T*T)
+
+
+def _energy_closed_sym_jax(xs, eps, epsp, J, Lam):
+    eta_n, r, kap = 2.0*xs[0], xs[1], xs[2]
+    F   = jnp.exp(-0.5*(Lam - eta_n)**2*jnp.exp(2.0*r))
+    sh2 = jnp.sinh(r)**2
+    den = 1.0 + kap**2 + 2.0*kap*F
+    num = (omega0*(0.25*eta_n**2 + (1.0 + kap**2)*sh2 + kap**2*(Lam - 0.5*eta_n)**2
+                   + 2.0*kap*F*(0.25*Lam**2 - 0.25*(Lam - eta_n)**2*jnp.exp(4.0*r) + sh2))
+           - jnp.abs(J)*jnp.abs(2.0*kap + (1.0 + kap**2)*F))
+    return eps + num/den
+
+
+_AD_CACHE = {}
+
+
+def _ad(n_par):
+    """(E, ∇E, H) exactos y compilados para el funcional de n_par parámetros."""
+    if n_par not in _AD_CACHE:
+        f = _energy_closed_sym_jax if n_par == 3 else _energy_closed_jax
+        _AD_CACHE[n_par] = (jax.jit(f), jax.jit(jax.grad(f)), jax.jit(jax.hessian(f)))
+    return _AD_CACHE[n_par]
+
+
+def _polish_newton(fun, n_par, x, args, bnd, itmax=40):
+    """Newton amortiguado (Levenberg–Marquardt) con ∇E y H exactos, en las variables libres.
+    Solo acepta pasos que bajan la energía (evaluada con el funcional numpy de producción).
+    En las direcciones casi planas (λ_min ~ 1e-12) el amortiguamiento impide pasos enormes."""
+    _, g_f, H_f = _ad(n_par)
+    lo = np.array([b[0] for b in bnd]); hi = np.array([b[1] for b in bnd])
+    x = np.clip(np.asarray(x, float), lo, hi)
+    E = fun(x, *args)
+    mu = None
+    for _ in range(itmax):
+        g = np.asarray(g_f(x, *args), float)
+        H = np.asarray(H_f(x, *args), float); H = 0.5*(H + H.T)
+        free = ~(((x <= lo + 1e-12) & (g > 0)) | ((x >= hi - 1e-12) & (g < 0)))
+        if not free.any() or np.max(np.abs(g[free])) < 1e-14:
+            break
+        Hf, gf = H[np.ix_(free, free)], g[free]
+        scale = max(float(np.max(np.abs(np.diag(Hf)))), 1e-300)
+        mu = 1e-8*scale if mu is None else mu
+        accepted = False
+        for _ in range(40):
+            try:
+                d = -np.linalg.solve(Hf + mu*np.eye(len(gf)), gf)
+            except np.linalg.LinAlgError:
+                mu *= 10.0
+                continue
+            xn = x.copy(); xn[free] += d; xn = np.clip(xn, lo, hi)
+            En = fun(xn, *args)
+            if np.isfinite(En) and En < E:
+                x, E, accepted = xn, En, True
+                mu = max(0.1*mu, 1e-16*scale)
+                break
+            mu *= 10.0
+        if not accepted:
+            break
+    return E, x
+
+
+def _min_variation(fun, n_par, x_star, E_star, x_prev, args, bnd):
+    """Entre los x con E(x) ≤ E* + δ (δ = MV_DELTA_REL·|E*|), el más cercano al punto anterior
+    de la continuación. Donde el mínimo está bien definido la restricción no deja moverse;
+    en los valles planos fija la dirección que la energía no determina.
+    SLSQP arranca desde x* y desde el punto anterior y se queda con la solución factible más
+    cercana a este: desde x* solo, si L-BFGS-B cayó lejos dentro del valle, quedaban escalones."""
+    _, g_f, _ = _ad(n_par)
+    lo = np.array([b[0] for b in bnd]); hi = np.array([b[1] for b in bnd])
+    s = np.array([1.0, 0.1, 0.1]) if n_par == 3 else np.array([1.0, 1.0, 0.1, 0.1, 0.1, 0.1])
+    xp = np.asarray(x_prev, float)
+    delta = max(MV_DELTA_REL*abs(E_star), 1e-14)
+    cons = {'type': 'ineq',
+            'fun': lambda x: (E_star + delta - fun(x, *args))/delta,
+            'jac': lambda x: -np.asarray(g_f(x, *args), float)/delta}
+    best = (np.inf, E_star, np.asarray(x_star, float))
+    for x0 in (np.asarray(x_star, float), np.clip(xp, lo, hi)):     # desde el óptimo y desde el punto anterior
+        try:
+            res = minimize(lambda x: np.sum(((x - xp)/s)**2), x0,
+                           jac=lambda x: 2.0*(x - xp)/s**2, method='SLSQP', bounds=bnd,
+                           constraints=[cons], options={'ftol': 1e-14, 'maxiter': 300})
+            x = np.clip(res.x, lo, hi)
+            E = fun(x, *args)
+        except Exception:
+            continue
+        dist = np.sum(((x - xp)/s)**2)
+        if np.isfinite(E) and E <= E_star + 1.01*delta and dist < best[0]:
+            best = (dist, E, x)
+    return best[1], best[2]
+
+
 def _sym_to_full(xs):
     """(η, r, κ) -> (η, −η, r, r, κ, κ): paridad de Rabi para δ_α = 0."""
     eta, r, kap = xs[0], xs[1], xs[2]
     return np.array([eta, -eta, r, r, kap, kap])
 
 
-def minimize_sector(sector, eps, epsp, J, Lam, x_warm=None):
+def minimize_sector(sector, eps, epsp, J, Lam, x_warm=None, info=None):
     """Devuelve (E, x) con x = (η↑, η↓, r↑, r↓, κ↑, κ↓).
     Si δ_α = (ε − ε')/2 = 0, se impone la paridad de Rabi Ŝ_α de las notas:
-    η↓ = −η↑, r↓ = r↑, κ↓ = κ↑, y se minimiza el funcional reducido E(η, r, κ)."""
-    if abs(eps - epsp) < 1e-12:
+    η↓ = −η↑, r↓ = r↑, κ↓ = κ↑, y se minimiza el funcional reducido E(η, r, κ).
+    Después de L-BFGS-B (con JAX): pulido de Newton y, si hay punto anterior (x_warm),
+    continuación de variación mínima. 'info' (opcional) recibe E y x antes de ambos pasos."""
+    sym = abs(eps - epsp) < 1e-12
+    if sym:
         xw = None if x_warm is None else (x_warm[0], x_warm[2], x_warm[4])
-        E, xs = _run_seeds(energy_closed_sym, (eps, epsp, J, Lam), Lam, 3, xw, sector)
-        return E, _sym_to_full(xs)
-    xw = None if x_warm is None else tuple(x_warm[:6])
-    return _run_seeds(energy_closed, (eps, epsp, J, Lam), Lam, 6, xw, sector)
+        fun, n_par = energy_closed_sym, 3
+    else:
+        xw = None if x_warm is None else tuple(x_warm[:6])
+        fun, n_par = energy_closed, 6
+    args = (eps, epsp, J, Lam)
+    E, x = _run_seeds(fun, args, Lam, n_par, xw, sector)
+    E_raw, x_raw = E, np.array(x, float)
+    if HAS_JAX and POLISH:
+        E, x = _polish_newton(fun, n_par, x, args, _bounds(Lam, n_par))
+    E_pol = E
+    if HAS_JAX and MIN_VARIATION and xw is not None:
+        E, x = _min_variation(fun, n_par, x, E, xw, args, _bounds(Lam, n_par))
+    to_full = _sym_to_full if sym else (lambda v: np.array(v, float))
+    if info is not None:
+        info.update(E_raw=E_raw, x_raw=to_full(x_raw), E_pol=E_pol)
+    return E, to_full(x)
 
 
 #  EXACTO (un modo acoplado, convención de las notas)
@@ -383,6 +528,10 @@ def sweep_Lambda(sector, cv, Lam_arr):
     leak = np.full(n, np.nan)
     cu   = np.full(n, np.nan)
     cd   = np.full(n, np.nan)
+    Eraw = np.full(n, np.nan)          # L-BFGS-B, antes del pulido y de la variación mínima
+    Epol = np.full(n, np.nan)          # después del pulido de Newton
+    Xraw = np.full((6, n), np.nan)
+    fraw = np.full(n, np.nan)
     warm = None
     for k, Lam in enumerate(Lam_arr):
         lam1, lam2 = Lam_to_lam12(Lam, 0.0)
@@ -390,8 +539,10 @@ def sweep_Lambda(sector, cv, Lam_arr):
             continue
         M = _Mof_Lam(Lam)
         eps, epsp, J = sector_params(sector, lam1, lam2, eps1_val, eps2_val, cv, cv)
-        E, x = minimize_sector(sector, eps, epsp, J, Lam, warm)
+        info = {}
+        E, x = minimize_sector(sector, eps, epsp, J, Lam, warm, info)
         warm = x
+        Eraw[k], Epol[k], Xraw[:, k] = info['E_raw'], info['E_pol'], info['x_raw']
         X[:, k] = x
         Ev[k]   = E
         ops = get_ops(M)
@@ -406,7 +557,12 @@ def sweep_Lambda(sector, cv, Lam_arr):
         rel[k]  = abs(E - E0)/abs(E0) if abs(E0) > 1e-12 else np.nan
         leak[k] = max(np.sum(pu[-5:]**2), np.sum(pd[-5:]**2))
         cu[k], cd[k] = c1, c2
-    return dict(X=X, Evar=Ev, Eex=Eex, Efock=Efk, fid=fid, rel=rel, leak=leak, cu=cu, cd=cd)
+        Ar, Br, Cr = closed_ABC(info['x_raw'], eps, epsp, J, Lam)
+        r1, r2 = weights_2x2(Ar, Br, Cr)
+        pur, pdr = var_states(info['x_raw'], Lam, ops)
+        fraw[k] = abs(psi_ex @ np.concatenate([r1*pur, r2*pdr]))**2
+    return dict(X=X, Evar=Ev, Eex=Eex, Efock=Efk, fid=fid, rel=rel, leak=leak, cu=cu, cd=cd,
+                Eraw=Eraw, Epol=Epol, Xraw=Xraw, fid_raw=fraw)
 
 
 def compute_fig2():
@@ -598,6 +754,29 @@ def tests_pre():
         pu, pd = var_states(_sym_to_full(xs), 2.5, ops)
         print(f'[T2c] (η,r,κ)={xs}:  ||φ↓ - Π φ↑|| = {np.linalg.norm(pd - Pi*pu):.2e}')
 
+    # T9: funcional JAX (derivadas del pulido y de la variación mínima) = funcional numpy
+    if not HAS_JAX:
+        print('[T9] JAX no está instalado: se omiten el pulido de Newton y la variación mínima')
+        return
+    dE, dg = 0.0, 0.0
+    for sector in ('odd', 'even'):
+        for Lam in (0.5, 2.0, 3.5, 5.0):
+            lam1, lam2 = Lam_to_lam12(Lam, 0.0)
+            eps, epsp, J = sector_params(sector, lam1, lam2, eps1_val, eps2_val, 1.0, 1.0)
+            for n_par, fun in ((6, energy_closed), (3, energy_closed_sym)):
+                E_j, g_j, _ = _ad(n_par)
+                lo = np.array([b[0] for b in _bounds(Lam, n_par)])
+                hi = np.array([b[1] for b in _bounds(Lam, n_par)])
+                for _ in range(20):
+                    x = lo + (hi - lo)*rng.random(n_par)
+                    a = (eps, eps, J, Lam) if n_par == 3 else (eps, epsp, J, Lam)
+                    dE = max(dE, abs(float(E_j(x, *a)) - fun(x, *a)))
+                    h = 1e-6
+                    gfd = np.array([(fun(x + h*e, *a) - fun(x - h*e, *a))/(2*h) for e in np.eye(n_par)])
+                    dg = max(dg, float(np.max(np.abs(np.asarray(g_j(x, *a)) - gfd))))
+    print(f'[T9] máx|E_JAX - E_numpy| = {dE:.2e}   máx|∇E_JAX - ∇E_FD| = {dg:.2e}   '
+          f'(pulido = {POLISH}, variación mínima = {MIN_VARIATION}, δ = {MV_DELTA_REL:.0e}·|E*|)')
+
 
 def tests_post(R):
     _hr('TESTS POSTERIORES')
@@ -615,6 +794,18 @@ def tests_post(R):
               + (f'   Λ = {np.array2string(LAM_F2[neg], precision=3, separator=", ")}' if neg.any() else ''))
         if sector == 'odd':
             print(f'[T8] odd  J/ω0={cv}:  máx|c↑ + c↓| (δ_o = 0) = {np.nanmax(np.abs(d["cu"] + d["cd"])):.2e}')
+        # T10: pulido de Newton y variación mínima: la energía no sube más que δ, la física no cambia,
+        #      y la variación total de cada parámetro a lo largo de Λ (antes -> después)
+        g_pol = d['Epol'] - d['Eraw']
+        up = (d['Evar'] - d['Epol'])/np.abs(d['Epol'])
+        tv = lambda Y: np.nansum(np.abs(np.diff(Y, axis=1)), axis=1)
+        tv0, tv1 = tv(d['Xraw']), tv(d['X'])
+        names = ('η↑', 'η↓', 'r↑', 'r↓', 'κ↑', 'κ↓')
+        print(f'[T10] {sector:4s} J/ω0={cv}:  pulido: E_pol - E_LBFGSB ∈ [{np.nanmin(g_pol):+.1e}, {np.nanmax(g_pol):+.1e}]'
+              f'   variación mínima: máx (E - E_pol)/|E_pol| = {np.nanmax(up):.1e} (δ = {MV_DELTA_REL:.0e})'
+              f'   máx|Δ fidelidad| = {np.nanmax(np.abs(d["fid"] - d["fid_raw"])):.1e}')
+        print(f'[T10] {sector:4s} J/ω0={cv}:  variación total en Λ (antes -> después): '
+              + '  '.join(f'{nm}: {a:.3g} -> {b:.3g}' for nm, a, b in zip(names, tv0, tv1)))
 
 #Ejecucion
 if __name__ == '__main__':

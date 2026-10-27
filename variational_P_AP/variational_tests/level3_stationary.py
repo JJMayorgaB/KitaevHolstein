@@ -355,8 +355,10 @@ def continue_branch(ad, case, J, x0, L0, direction, lmin, lmax, grid,
 
 def task_dav(case, J, lams, anchors, nrand, overwrite):
     bpath = C.point_path('level3', case, J, 0.0, 'x').replace('L000.0000__x.json', 'davidenko.json')
-    if not overwrite and C.exists(bpath):
-        return (case, J, 'DAV', 'skip')
+    lam_list = [round(float(L), 6) for L in lams]
+    if (not overwrite and C.exists(bpath) and C.load_json(bpath).get('lams') == lam_list
+            and all(C.exists(C.point_path('level3', case, J, L, 'DAV')) for L in lams)):
+        return (case, J, 'DAV', 'skip')          # solo si se hizo con ESTA misma malla
     ad = C.get_ad(case)
     t0 = time.time()
     lmin, lmax = float(min(lams)), float(max(lams))
@@ -379,7 +381,7 @@ def task_dav(case, J, lams, anchors, nrand, overwrite):
                 branches.append(continue_branch(ad, case, J, x0, La, d, lmin, lmax, list(lams)))
             except Exception as e:
                 branches.append(dict(start_L=La, direction=d, status=f'error: {e}', grid=[], path=[], events=[]))
-    C.save_json(bpath, dict(case=case, J=float(J), anchors=list(anchors), branches=branches,
+    C.save_json(bpath, dict(case=case, J=float(J), anchors=list(anchors), lams=lam_list, branches=branches,
                             time=time.time() - t0))
     # por punto de la malla: el menor estado estable dentro del dominio
     for Lam in lams:
