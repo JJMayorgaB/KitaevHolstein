@@ -93,7 +93,7 @@ def marginal_negativities_var(psi_ph, nph, xvec, pvec, fast=True):
 if __name__ == "__main__":
 
     omega0   = 1.0
-    cv_val   = 1.0
+    CV_LIST  = [1.0, 0.5, 1.5]    # J_α/ω0, los mismos del exacto
     LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]      # los mismos Λ del exacto
     sector   = 'odd'
     SIGNS    = (+1, -1)           # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismos (η, r, κ)
@@ -110,6 +110,9 @@ if __name__ == "__main__":
     OUTDIR = os.path.join(HERE, 'Figures', 'cat', 'data')
     os.makedirs(OUTDIR, exist_ok=True)
 
+    def fname(cv_val, Lam_fix, sign):
+        return os.path.join(OUTDIR, f'marginal_negativity_vs_theta_PAPS_sign{sign:+d}_cv{cv_val}_{Lam_fix}.txt')
+
     def _one_theta(Lam_fix, eta, r, k, th):
         lam1 = Lam_fix * np.cos(th)
         lam2 = Lam_fix * np.sin(th)
@@ -119,31 +122,34 @@ if __name__ == "__main__":
             out.append(marginal_negativities_var(psi_ph, nph_wig, xvec, pvec, fast=FAST_WIGNER))
         return k, out
 
-    for Lam_fix in LAM_LIST:
-        # el funcional solo depende de Λ: una minimización para todo el corte
-        E, (eta, r, kap) = minimize_cat(Lam_fix, cv_val)
-        F = np.exp(-0.5*(Lam_fix - eta)**2*np.exp(2.0*r))
-        o = (2.0*kap + (1.0 + kap*kap)*F)/(1.0 + kap*kap + 2.0*kap*F)
-        print(f'Λ = {Lam_fix:.6f}:  η = {eta:.8f}  r = {r:.8f}  κ = {kap:.8f}  '
-              f'E = {E:.10f}  p_cat(+) = {0.5*(1.0 + o):.6f}  p_cat(−) = {0.5*(1.0 - o):.6f}', flush=True)
+    for cv_val in CV_LIST:
+        for Lam_fix in LAM_LIST:
+            if all(os.path.exists(fname(cv_val, Lam_fix, sg)) for sg in SIGNS):
+                print(f'J_α/ω0 = {cv_val}, Λ = {Lam_fix:.4f}: ya calculado, se omite', flush=True)
+                continue
+            # el funcional solo depende de Λ: una minimización para todo el corte
+            E, (eta, r, kap) = minimize_cat(Lam_fix, cv_val)
+            F = np.exp(-0.5*(Lam_fix - eta)**2*np.exp(2.0*r))
+            o = (2.0*kap + (1.0 + kap*kap)*F)/(1.0 + kap*kap + 2.0*kap*F)
+            print(f'J_α/ω0 = {cv_val}, Λ = {Lam_fix:.6f}:  η = {eta:.8f}  r = {r:.8f}  κ = {kap:.8f}  '
+                  f'E = {E:.10f}  p_cat(+) = {0.5*(1.0 + o):.6f}  p_cat(−) = {0.5*(1.0 - o):.6f}', flush=True)
 
-        _res = Parallel(n_jobs=N_JOBS, verbose=5)(
-            delayed(_one_theta)(Lam_fix, eta, r, k, th) for k, th in enumerate(theta_arr))
+            _res = Parallel(n_jobs=N_JOBS, verbose=5)(
+                delayed(_one_theta)(Lam_fix, eta, r, k, th) for k, th in enumerate(theta_arr))
 
-        for k_s, sign in enumerate(SIGNS):
-            p_cat = 0.5*(1.0 + sign*o)
-            _out = np.full((nth, 8), np.nan)
-            _out[:, 0] = theta_arr
-            for k, out in _res:
-                _out[k, 1:] = out[k_s]
+            for k_s, sign in enumerate(SIGNS):
+                p_cat = 0.5*(1.0 + sign*o)
+                _out = np.full((nth, 8), np.nan)
+                _out[:, 0] = theta_arr
+                for k, out in _res:
+                    _out[k, 1:] = out[k_s]
 
-            fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_PAPS_sign{sign:+d}_{Lam_fix}.txt')
-            np.savetxt(fname, _out, fmt='%.8e',
-                       header=(f'(P+AP)S, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}, '
-                               f'J/omega0={cv_val}, nph={nph_wig} | eta={eta:.10e} r={r:.10e} '
-                               f'kappa={kap:.10e} E={E:.10e} p_cat={p_cat:.10e}\n'
-                               'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
-            print(f'Guardado: {fname}')
-            print(f'  min ∫W1 = {np.nanmin(_out[:, 3]):.6f}   min ∫W2 = {np.nanmin(_out[:, 4]):.6f}')
+                np.savetxt(fname(cv_val, Lam_fix, sign), _out, fmt='%.8e',
+                           header=(f'(P+AP)S, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}, '
+                                   f'J/omega0={cv_val}, nph={nph_wig} | eta={eta:.10e} r={r:.10e} '
+                                   f'kappa={kap:.10e} E={E:.10e} p_cat={p_cat:.10e}\n'
+                                   'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
+                print(f'Guardado: {fname(cv_val, Lam_fix, sign)}')
+                print(f'  min ∫W1 = {np.nanmin(_out[:, 3]):.6f}   min ∫W2 = {np.nanmin(_out[:, 4]):.6f}')
 
     print("Barrido marginal θ (P+AP)S listo.")

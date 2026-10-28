@@ -187,25 +187,26 @@ def M_of_Lam(Lam, floor=75):
 if __name__ == "__main__":
 
     omega0   = 1.0
-    cv_val   = 1.0
+    CV_LIST  = [1.0, 0.5, 1.5]   # J_α/ω0 (t = Δ = cv); cada valor en su subcarpeta cv{...}
     sector   = 'odd'
     SIGNS    = (+1, -1)          # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismo estado base
     nph_wig  = 85
     N_JOBS   = 128
 
-    nLam = 200
-    nth  = 200
+    nLam = 300                   # la misma malla (Λ, θ) de los mapas variacionales
+    nth  = 300
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
-    HERE   = os.path.dirname(os.path.abspath(__file__))
-    OUTDIR = {sign: os.path.join(HERE, f'cat_state_information_resources_exact_sign{sign:+d}'
-                                       f'_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}')
-              for sign in SIGNS}
-    for d in OUTDIR.values():
-        os.makedirs(d, exist_ok=True)
+    HERE  = os.path.dirname(os.path.abspath(__file__))
+    FILES = ('coord_Lam', 'coord_theta', 'delta1', 'delta2', 'EN', 'S',
+             'norm1', 'norm2', 'rank_eff', 'gap')
 
-    def _one_point(iL, ith):
+    def outdir(sign, cv_val):
+        return os.path.join(HERE, f'cat_state_information_resources_exact_sign{sign:+d}'
+                                  f'_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}', f'cv{cv_val}')
+
+    def _one_point(cv_val, iL, ith):
         Lam = Lam_arr[iL]; th = theta_arr[ith]
         g1 = Lam*np.cos(th); g2 = Lam*np.sin(th)
 
@@ -222,46 +223,55 @@ if __name__ == "__main__":
 
         return iL, ith, gap, out
 
-    tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
-    print(f'Puntos: {len(tasks)}   ({nLam} Λ × {nth} θ) × ramas {SIGNS}', flush=True)
+    for cv_val in CV_LIST:
+        # si los mapas de esta J_α/ω0 ya están completos (ambas ramas), no se recalculan
+        if all(os.path.exists(os.path.join(outdir(s, cv_val), f + '.txt')) for s in SIGNS for f in FILES):
+            print(f'J_α/ω0 = {cv_val}: ya calculado, se omite', flush=True)
+            continue
+        for s in SIGNS:
+            os.makedirs(outdir(s, cv_val), exist_ok=True)
 
-    _res = Parallel(n_jobs=N_JOBS, verbose=10)(delayed(_one_point)(iL, ith) for iL, ith in tasks)
+        tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
+        print(f'J_α/ω0 = {cv_val}:  puntos {len(tasks)}   ({nLam} Λ × {nth} θ) × ramas {SIGNS}', flush=True)
 
-    for k_s, sign in enumerate(SIGNS):
-        d1_map  = np.full((nLam, nth), np.nan)
-        d2_map  = np.full((nLam, nth), np.nan)
-        EN_map  = np.full((nLam, nth), np.nan)
-        S_map   = np.full((nLam, nth), np.nan)
-        n1_map  = np.full((nLam, nth), np.nan)
-        n2_map  = np.full((nLam, nth), np.nan)
-        rk_map  = np.full((nLam, nth), np.nan)
-        gap_map = np.full((nLam, nth), np.nan)
+        _res = Parallel(n_jobs=N_JOBS, verbose=10)(delayed(_one_point)(cv_val, iL, ith) for iL, ith in tasks)
 
-        for iL, ith, gap, out in _res:
-            d1, d2, E_N, S, n1, n2, rk = out[k_s]
-            d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
-            EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
-            n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
-            rk_map[iL, ith] = rk; gap_map[iL, ith] = gap
+        for k_s, sign in enumerate(SIGNS):
+            d1_map  = np.full((nLam, nth), np.nan)
+            d2_map  = np.full((nLam, nth), np.nan)
+            EN_map  = np.full((nLam, nth), np.nan)
+            S_map   = np.full((nLam, nth), np.nan)
+            n1_map  = np.full((nLam, nth), np.nan)
+            n2_map  = np.full((nLam, nth), np.nan)
+            rk_map  = np.full((nLam, nth), np.nan)
+            gap_map = np.full((nLam, nth), np.nan)
 
-        hdr = (f'mapa exacto (Lambda, theta) | filas = Lambda ({nLam}), ' f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, ' f'nph_wig={nph_wig}')
-        D = OUTDIR[sign]
+            for iL, ith, gap, out in _res:
+                d1, d2, E_N, S, n1, n2, rk = out[k_s]
+                d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
+                EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
+                n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
+                rk_map[iL, ith] = rk; gap_map[iL, ith] = gap
 
-        np.savetxt(f'{D}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
-        np.savetxt(f'{D}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
-        np.savetxt(f'{D}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/S.txt',      S_map,  fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/rank_eff.txt', rk_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/gap.txt',      gap_map, fmt='%.8e', header=hdr)
+            hdr = (f'mapa exacto (Lambda, theta) | filas = Lambda ({nLam}), ' f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, '
+                   f'J/omega0={cv_val}, nph_wig={nph_wig}')
+            D = outdir(sign, cv_val)
 
-        print(f'Guardado en {D}/')
-        print(f'  ∫W1 ∈ [{np.nanmin(n1_map):.6f}, {np.nanmax(n1_map):.6f}]')
-        print(f'  ∫W2 ∈ [{np.nanmin(n2_map):.6f}, {np.nanmax(n2_map):.6f}]')
-        print(f'  puntos con |∫W-1| > 1e-3 : {int(np.sum(np.abs(n1_map-1) > 1e-3))} de {n1_map.size}')
-        print(f'  E_N ∈ [{np.nanmin(EN_map):.4f}, {np.nanmax(EN_map):.4f}]   '
-              f'S ∈ [{np.nanmin(S_map):.4f}, {np.nanmax(S_map):.4f}]')
-        print(f'  rank_eff ∈ [{int(np.nanmin(rk_map))}, {int(np.nanmax(rk_map))}]')
+            np.savetxt(f'{D}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
+            np.savetxt(f'{D}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
+            np.savetxt(f'{D}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/S.txt',      S_map,  fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/rank_eff.txt', rk_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/gap.txt',      gap_map, fmt='%.8e', header=hdr)
+
+            print(f'Guardado en {D}/')
+            print(f'  ∫W1 ∈ [{np.nanmin(n1_map):.6f}, {np.nanmax(n1_map):.6f}]')
+            print(f'  ∫W2 ∈ [{np.nanmin(n2_map):.6f}, {np.nanmax(n2_map):.6f}]')
+            print(f'  puntos con |∫W-1| > 1e-3 : {int(np.sum(np.abs(n1_map-1) > 1e-3))} de {n1_map.size}')
+            print(f'  E_N ∈ [{np.nanmin(EN_map):.4f}, {np.nanmax(EN_map):.4f}]   '
+                  f'S ∈ [{np.nanmin(S_map):.4f}, {np.nanmax(S_map):.4f}]')
+            print(f'  rank_eff ∈ [{int(np.nanmin(rk_map))}, {int(np.nanmax(rk_map))}]', flush=True)

@@ -7,13 +7,17 @@ import matplotlib.gridspec as gridspec
 import sys
 import subprocess
 
-# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
-# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+# Rama del gato y J_α/ω0:  python script.py +1 1.0   (|Cat_+>, J_α/ω0 = 1.0)
+# Sin argumentos genera todas las ramas y todas las J_α/ω0 de CV_LIST, cada una con sus figuras
+# (se omiten las combinaciones que todavía no tienen datos).
+CV_LIST = (0.5, 1.0, 1.5)
 if len(sys.argv) == 1:
     for _sg in ('+1', '-1'):
-        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+        for _cv in CV_LIST:
+            subprocess.run([sys.executable, os.path.abspath(__file__), _sg, str(_cv)], check=True)
     sys.exit(0)
 SIGN = int(sys.argv[1])
+CV   = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 
 plt.rcParams.update({
     'text.usetex': True,
@@ -42,22 +46,24 @@ plt.rcParams.update({
 omega0 = 1.0
 KIND   = 'var'            # 'var' (variacional (P+AP)S) o 'exact'
 HERE   = os.path.dirname(os.path.abspath(__file__))
-OUT    = os.path.join(HERE, 'Figures', 'cat')
+OUT    = os.path.join(HERE, 'Figures', 'cat')           # + info_resources/heatmaps, info_resources/cuts, checks
 CMAP   = 'inferno'
 
 if KIND == 'var':
     nLam, nth = 300, 300
     SRC = os.path.join(HERE, 'Figures', 'cat', 'data',
                        f'cat_state_information_resources_PAPS_sign{SIGN:+d}_omega0{omega0:.1f}'
-                       f'_nL_{nLam}_nth_{nth}')
-    TAG = f'{KIND}_nL{nLam}_nth{nth}_PAPS_sign{SIGN:+d}'
+                       f'_nL_{nLam}_nth_{nth}', f'cv{CV}')
+    TAG = f'{KIND}_nL{nLam}_nth{nth}_PAPS_sign{SIGN:+d}_cv{CV}'
 else:
-    nLam, nth = 200, 200
+    nLam, nth = 300, 300
     SRC = os.path.join(HERE, '..',
                        f'cat_state_information_resources_exact_sign{SIGN:+d}_omega0{omega0:.1f}'
-                       f'_nL_{nLam}_nth_{nth}')
-    TAG = f'{KIND}_nL{nLam}_nth{nth}_sign{SIGN:+d}'
-os.makedirs(OUT, exist_ok=True)
+                       f'_nL_{nLam}_nth_{nth}', f'cv{CV}')
+    TAG = f'{KIND}_nL{nLam}_nth{nth}_sign{SIGN:+d}_cv{CV}'
+if not os.path.isdir(SRC):
+    print(f'sign={SIGN:+d}, J/ω0={CV}: no está {SRC}, se omite')
+    sys.exit(0)
 
 # ── carga ─────────────────────────────────────────────────────────
 Lam_arr   = np.loadtxt(os.path.join(SRC, 'coord_Lam.txt'))
@@ -103,9 +109,11 @@ def _fmt_axes(ax, show_ylabel=True, col_ticks='white'):
         ax.tick_params(axis='y', labelleft=False)
 
 
-def _save(fig, name):
+def _save(fig, name, sub=os.path.join('info_resources', 'heatmaps')):
+    out = os.path.join(OUT, sub)
+    os.makedirs(out, exist_ok=True)
     for ext in ('jpg', 'svg'):
-        fig.savefig(os.path.join(OUT, f'{name}_{TAG}.{ext}'), bbox_inches='tight', transparent=False, dpi=300)
+        fig.savefig(os.path.join(out, f'{name}_{TAG}.{ext}'), bbox_inches='tight', transparent=False, dpi=300)
     plt.show()
     print(f'  guardado: {name}_{TAG}.jpg / .svg')
 
@@ -122,7 +130,8 @@ def _single(data, label, name, col_ticks='white'):
     _save(fig, name)
 
 
-def _pair(dA, dB, labA, labB, cbar_label, name, col_ticks='white', vmin=0.0):
+def _pair(dA, dB, labA, labB, cbar_label, name, col_ticks='white', vmin=0.0,
+          sub=os.path.join('info_resources', 'heatmaps')):
     """Dos paneles con una única colorbar.
        vmin=0.0 por defecto; pásalo como None para usar el mínimo de los datos."""
     if vmin is None:
@@ -138,7 +147,7 @@ def _pair(dA, dB, labA, labB, cbar_label, name, col_ticks='white', vmin=0.0):
     cbar = fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.046, pad=0.025, shrink=0.85)
     cbar.ax.set_title(cbar_label, pad=16)
     cbar.ax.tick_params(direction='in')
-    _save(fig, name)
+    _save(fig, name, sub)
 
 
 def _fmt_cut_axes(ax):
@@ -170,7 +179,7 @@ def _cut_entanglement(theta_cut, name):
     ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
               loc='lower right', borderpad=0.5, handlelength=2.0, labelspacing=0.3)
     plt.tight_layout()
-    _save(fig, name)
+    _save(fig, name, os.path.join('info_resources', 'cuts'))
 
 
 def _cut_marginal(theta_cut, name):
@@ -190,7 +199,7 @@ def _cut_marginal(theta_cut, name):
     ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
               loc='lower right', borderpad=0.5, handlelength=2.0, labelspacing=0.3)
     plt.tight_layout()
-    _save(fig, name)
+    _save(fig, name, os.path.join('info_resources', 'cuts'))
 
 
 # ── 1. negatividades marginales: escala desde 0 ──
@@ -203,7 +212,7 @@ _single(EN, r'$E_N$', 'heatmap_log_negativity')
 _single(S, r'$S$', 'heatmap_vn_entropy')
 
 # ── 4. control de malla: escala desde el mínimo de los datos ──
-_pair(n1, n2, r'(a)', r'(b)', r'$\int W_i$', 'heatmap_wigner_norm', vmin=None)
+_pair(n1, n2, r'(a)', r'(b)', r'$\int W_i$', 'heatmap_wigner_norm', vmin=None, sub='checks')
 
 # ── 5. corte E_N y S en θ = π/4 ───────────────────────────────────
 _cut_entanglement(np.pi/4, 'cut_entanglement_theta_pi4')

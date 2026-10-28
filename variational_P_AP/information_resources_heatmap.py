@@ -123,7 +123,7 @@ def wigner_grid(Lam, n_x=301, n_p=251, x_pad=5.0, p_half=4.0):
 #  EJECUCIÓN — mapa (Λ, θ) de δ1, δ2, E_N, S (variacional (P+AP)S, ramas Cat+ y Cat−)
 if __name__ == "__main__":
 
-    cv_val   = 1.0
+    CV_LIST  = [1.0, 0.5, 1.5]   # J_α/ω0; cada valor en su subcarpeta cv{...}
     sector   = 'odd'
     SIGNS    = (+1, -1)          # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismos (η, r, κ)
     N_FOCK   = 40
@@ -135,26 +135,14 @@ if __name__ == "__main__":
     Lam_arr   = np.linspace(0.05, 6.0, nLam)
     theta_arr = np.linspace(0.0, 2.0*np.pi, nth)
 
-    OUTDIR = {sign: os.path.join(HERE, 'Figures', 'cat', 'data',
-                                 f'cat_state_information_resources_PAPS_sign{sign:+d}'
-                                 f'_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}')
-              for sign in SIGNS}
-    for d in OUTDIR.values():
-        os.makedirs(d, exist_ok=True)
+    FILES = ('paps_params', 'coord_Lam', 'coord_theta', 'delta1', 'delta2', 'EN', 'S', 'norm1', 'norm2')
 
-    # 1) (η, r, κ) óptimos por Λ (serial, unos segundos); los mismos para ambas ramas
-    PAR = paps_params(Lam_arr, cv_val)
-    o_arr = paps_overlap(Lam_arr, PAR[:, 0], PAR[:, 1], PAR[:, 2])
-    for sign in SIGNS:
-        np.savetxt(os.path.join(OUTDIR[sign], 'paps_params.txt'),
-                   np.column_stack([Lam_arr, PAR[:, 0], PAR[:, 1], PAR[:, 2], PAR[:, 3],
-                                    0.5*(1.0 + o_arr), 0.5*(1.0 - o_arr)]),
-                   fmt='%.10e',
-                   header=(f'(P+AP)S, J/omega0={cv_val} | Lambda  eta  r  kappa  E  '
-                           f'p_cat(sign=+1)=(1+o)/2  p_cat(sign=-1)=(1-o)/2,  o=<phi_up|D(Lambda)|phi_dn>'))
-    print(f'Parámetros (P+AP)S listos ({nLam} valores de Λ)', flush=True)
+    def outdir(sign, cv_val):
+        return os.path.join(HERE, 'Figures', 'cat', 'data',
+                            f'cat_state_information_resources_PAPS_sign{sign:+d}'
+                            f'_omega0{omega0:.1f}_nL_{nLam}_nth_{nth}', f'cv{cv_val}')
 
-    def _one_point(iL, ith):
+    def _one_point(PAR, iL, ith):
         Lam = Lam_arr[iL]; th = theta_arr[ith]
         lam1 = Lam*np.cos(th); lam2 = Lam*np.sin(th)
 
@@ -169,39 +157,59 @@ if __name__ == "__main__":
 
         return iL, ith, out
 
-    tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
-    print(f'Puntos: {len(tasks)}   ({nLam} Λ × {nth} θ) × ramas {SIGNS}', flush=True)
+    for cv_val in CV_LIST:
+        # si los mapas de esta J_α/ω0 ya están completos (ambas ramas), no se recalculan
+        if all(os.path.exists(os.path.join(outdir(s, cv_val), f + '.txt')) for s in SIGNS for f in FILES):
+            print(f'J_α/ω0 = {cv_val}: ya calculado, se omite', flush=True)
+            continue
+        for s in SIGNS:
+            os.makedirs(outdir(s, cv_val), exist_ok=True)
 
-    _res = Parallel(n_jobs=N_JOBS, verbose=10)(
-        delayed(_one_point)(iL, ith) for iL, ith in tasks)
+        # 1) (η, r, κ) óptimos por Λ (serial, unos segundos); los mismos para ambas ramas
+        PAR = paps_params(Lam_arr, cv_val)
+        o_arr = paps_overlap(Lam_arr, PAR[:, 0], PAR[:, 1], PAR[:, 2])
+        for sign in SIGNS:
+            np.savetxt(os.path.join(outdir(sign, cv_val), 'paps_params.txt'),
+                       np.column_stack([Lam_arr, PAR[:, 0], PAR[:, 1], PAR[:, 2], PAR[:, 3],
+                                        0.5*(1.0 + o_arr), 0.5*(1.0 - o_arr)]),
+                       fmt='%.10e',
+                       header=(f'(P+AP)S, J/omega0={cv_val} | Lambda  eta  r  kappa  E  '
+                               f'p_cat(sign=+1)=(1+o)/2  p_cat(sign=-1)=(1-o)/2,  o=<phi_up|D(Lambda)|phi_dn>'))
+        print(f'J_α/ω0 = {cv_val}: parámetros (P+AP)S listos ({nLam} valores de Λ)', flush=True)
 
-    for k_s, sign in enumerate(SIGNS):
-        d1_map = np.full((nLam, nth), np.nan)
-        d2_map = np.full((nLam, nth), np.nan)
-        EN_map = np.full((nLam, nth), np.nan)
-        S_map  = np.full((nLam, nth), np.nan)
-        n1_map = np.full((nLam, nth), np.nan)
-        n2_map = np.full((nLam, nth), np.nan)
+        tasks = [(iL, ith) for iL in range(nLam) for ith in range(nth)]
+        print(f'J_α/ω0 = {cv_val}:  puntos {len(tasks)}   ({nLam} Λ × {nth} θ) × ramas {SIGNS}', flush=True)
 
-        for iL, ith, out in _res:
-            d1, d2, E_N, S, n1, n2 = out[k_s]
-            d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
-            EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
-            n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
+        _res = Parallel(n_jobs=N_JOBS, verbose=10)(
+            delayed(_one_point)(PAR, iL, ith) for iL, ith in tasks)
 
-        hdr = (f'mapa variacional (P+AP)S (Lambda, theta) | filas = Lambda ({nLam}), '
-               f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, '
-               f'N_FOCK={N_FOCK}, r_thresh={r_thresh}')
-        D = OUTDIR[sign]
+        for k_s, sign in enumerate(SIGNS):
+            d1_map = np.full((nLam, nth), np.nan)
+            d2_map = np.full((nLam, nth), np.nan)
+            EN_map = np.full((nLam, nth), np.nan)
+            S_map  = np.full((nLam, nth), np.nan)
+            n1_map = np.full((nLam, nth), np.nan)
+            n2_map = np.full((nLam, nth), np.nan)
 
-        np.savetxt(f'{D}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
-        np.savetxt(f'{D}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
-        np.savetxt(f'{D}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/S.txt',      S_map,  fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
-        np.savetxt(f'{D}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
+            for iL, ith, out in _res:
+                d1, d2, E_N, S, n1, n2 = out[k_s]
+                d1_map[iL, ith] = d1; d2_map[iL, ith] = d2
+                EN_map[iL, ith] = E_N; S_map[iL, ith]  = S
+                n1_map[iL, ith] = n1; n2_map[iL, ith]  = n2
 
-        print(f'Guardado en {D}/')
-        print(f'  min ∫W1 = {np.nanmin(n1_map):.4f}   min ∫W2 = {np.nanmin(n2_map):.4f}')
+            hdr = (f'mapa variacional (P+AP)S (Lambda, theta) | filas = Lambda ({nLam}), '
+                   f'columnas = theta ({nth}) | sector={sector}, sign={sign:+d}, J/omega0={cv_val}, '
+                   f'N_FOCK={N_FOCK}, r_thresh={r_thresh}')
+            D = outdir(sign, cv_val)
+
+            np.savetxt(f'{D}/coord_Lam.txt',   Lam_arr,   fmt='%.8e', header='Lambda')
+            np.savetxt(f'{D}/coord_theta.txt', theta_arr, fmt='%.8e', header='theta')
+            np.savetxt(f'{D}/delta1.txt', d1_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/delta2.txt', d2_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/EN.txt',     EN_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/S.txt',      S_map,  fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/norm1.txt',  n1_map, fmt='%.8e', header=hdr)
+            np.savetxt(f'{D}/norm2.txt',  n2_map, fmt='%.8e', header=hdr)
+
+            print(f'Guardado en {D}/')
+            print(f'  min ∫W1 = {np.nanmin(n1_map):.4f}   min ∫W2 = {np.nanmin(n2_map):.4f}', flush=True)

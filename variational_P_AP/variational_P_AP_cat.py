@@ -74,8 +74,7 @@ LAM_INFID_TWIN = np.linspace(0.01, 5.0, 200)                   # infidelidad 1D,
 LAM_INFID      = np.linspace(0.01, 5.0, 300)                   # infidelidad 1D, un eje
 LAM_CUT        = np.sqrt(2.0)*np.linspace(0.01, 4.0, 300)      # p±, β̃, solapamientos
 
-# negatividad δ_W (cv = 1)
-CV_NEG      = 1.0
+# negatividad δ_W, Wigner y Wigner conjunta: se calculan para cada J_α/ω0 de cv_list
 LAM_NEG_EX  = np.linspace(0.01, 7.0, 200)
 # malla común (exacto y variacional) en coordenadas de α, Δx = Δp = 0.02.
 # Convergencia verificada contra x∈[−10,10], p∈[−7,7] (1501×1051): |Δδ| ≤ 6e-5, ∫W = 1.
@@ -86,20 +85,16 @@ X_NEG_VAR   = X_NEG_EX
 P_NEG_VAR   = P_NEG_EX
 
 # Wigner exacto vs variacional (λ₁ = λ₂ = λ_val)
-CV_WIG     = 1.0
 WIG_POINTS = [(3.0, (7.0, 7.0)), (2.0, (9.0, 9.0))]
 WIG_GRID   = np.linspace(-4.2, 4.2, 301)
 
 # Wigner conjunta de dos modos
-CV_JOINT     = 1.0
 LAM_JOINT    = 3.0*np.sqrt(2)
 THETA_JOINT  = np.pi/4
 N_FOCK_JOINT = 50
 SECTOR_JOINT = 'even'
 SIGN_JOINT   = -1
 UV_JOINT     = np.linspace(-3.5, 3.5, 201)
-
-CV_2X2 = 1.0
 
 OUT_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Figures', 'cat')
 DATA_DIR = os.path.join(OUT_DIR, 'data', 'cat_PAPS')        # datos que lee plot_variational_P_AP_cat.py
@@ -699,21 +694,21 @@ def _neg_point_variational(Lam, sign, xvec, pvec, cv_val):
     return wigner_negativity(W, xvec, pvec)
 
 
-def compute_negativity_exact():
+def compute_negativity_exact(cv):
     _OPS_CACHE.clear()
     tasks = [(L, s) for L in LAM_NEG_EX for s in (+1, -1)]
     res = Parallel(n_jobs=N_JOBS, verbose=5)(
-        delayed(_neg_point)(L, s, X_NEG_EX, P_NEG_EX, CV_NEG) for L, s in tasks)
+        delayed(_neg_point)(L, s, X_NEG_EX, P_NEG_EX, cv) for L, s in tasks)
     res = np.array(res).reshape(len(LAM_NEG_EX), 2, 2)
     return dict(Lam=LAM_NEG_EX, dp=res[:, 0, 0], dm=res[:, 1, 0],
                 np_=res[:, 0, 1], nm=res[:, 1, 1])
 
 
-def compute_negativity_var():
+def compute_negativity_var(cv):
     _OPS_CACHE.clear()
     tasks = [(L, s) for L in LAM_NEG_VAR for s in (+1, -1)]
     res = Parallel(n_jobs=N_JOBS, verbose=5)(
-        delayed(_neg_point_variational)(L, s, X_NEG_VAR, P_NEG_VAR, CV_NEG)
+        delayed(_neg_point_variational)(L, s, X_NEG_VAR, P_NEG_VAR, cv)
         for L, s in tasks)
     res = np.array(res).reshape(len(LAM_NEG_VAR), 2, 2)
     return dict(Lam=LAM_NEG_VAR, dp=res[:, 0, 0], dm=res[:, 1, 0],
@@ -785,7 +780,7 @@ def wigner_joint_cut_exact(psi_ph, nph, uvec, vvec, plane='real'):
 # ══════════════════════════════════════════════════════════════════
 #  WIGNER DE LAS FIGURAS (los datos; las figuras las hace plot_variational_P_AP_cat.py)
 # ══════════════════════════════════════════════════════════════════
-def compute_wigner_stacks():
+def compute_wigner_stacks(cv):
     """W exacta y variacional (rama +) para cada λ de WIG_POINTS (λ₁ = λ₂ = λ). Devuelve
     {λ: dict(W_ex, W_v, x)}, malla WIG_GRID en x y en p (filas = p, columnas = x)."""
     xvec = pvec = WIG_GRID
@@ -793,23 +788,23 @@ def compute_wigner_stacks():
     for lam_val, _ in WIG_POINTS:
         Lam = np.sqrt(2.0)*lam_val
         M   = _Mof_Lam(Lam)
-        _, vec, _ = E_cat_exact(lam_val, lam_val, CV_WIG, M=M)
+        _, vec, _ = E_cat_exact(lam_val, lam_val, cv, M=M)
         psi_ex = exact_cat_state(lam_val, lam_val, vec, M, sign=+1)
         W_ex, _, _ = wigner_and_cuts_num(psi_ex, xvec, pvec, verbose=False)
-        _, x = minimize_cat(Lam, CV_WIG)
+        _, x = minimize_cat(Lam, cv)
         psi_v = variational_cat_vector(Lam, x, +1, M)
         W_v, _, _ = wigner_and_cuts_padded(psi_v, xvec, pvec)
         out[lam_val] = dict(W_ex=W_ex, W_v=W_v, x=x)
-        print(f'Wigner exacto vs variacional, λ={lam_val}: (η, r, κ) = ({x[0]:.4f}, {x[1]:.4f}, {x[2]:.4f})')
+        print(f'Wigner exacto vs variacional, J/ω0={cv}, λ={lam_val}: (η, r, κ) = ({x[0]:.4f}, {x[1]:.4f}, {x[2]:.4f})')
     return out
 
 
-def compute_joint_wigner():
+def compute_joint_wigner(cv):
     """W(α1, α2) del gato bimodal en los cortes Re-Re e Im-Im (malla UV_JOINT)."""
     lam1 = LAM_JOINT*np.cos(THETA_JOINT)
     lam2 = LAM_JOINT*np.sin(THETA_JOINT)
-    psi, pars = cat_bimodal(lam1, lam2, CV_JOINT, N_FOCK_JOINT, SECTOR_JOINT, SIGN_JOINT)
-    print(f'{SECTOR_JOINT} sign={SIGN_JOINT}: η={pars[0]:.4f} r={pars[1]:.4f} κ={pars[4]:.4f} '
+    psi, pars = cat_bimodal(lam1, lam2, cv, N_FOCK_JOINT, SECTOR_JOINT, SIGN_JOINT)
+    print(f'J/ω0={cv}, {SECTOR_JOINT} sign={SIGN_JOINT}: η={pars[0]:.4f} r={pars[1]:.4f} κ={pars[4]:.4f} '
           f'γ1={pars[2]:.3f} γ2={pars[3]:.3f}', flush=True)
     W_re = wigner_joint_cut_exact(psi, N_FOCK_JOINT, UV_JOINT, UV_JOINT, plane='real')
     W_im = wigner_joint_cut_exact(psi, N_FOCK_JOINT, UV_JOINT, UV_JOINT, plane='imag')
@@ -836,38 +831,38 @@ def save_sweeps(S):
                            + ' '.join(SWEEP_KEYS)))
 
 
-def save_negativity(NE, NV):
+def save_negativity(NE, NV, cv):
     for name, N, X, P in (('exact', NE, X_NEG_EX, P_NEG_EX), ('variational', NV, X_NEG_VAR, P_NEG_VAR)):
-        np.savetxt(os.path.join(DATA_DIR, f'negativity_{name}.txt'),
+        np.savetxt(os.path.join(DATA_DIR, f'negativity_{name}_cv{cv}.txt'),
                    np.column_stack([N['Lam'], N['dp'], N['dm'], N['np_'], N['nm']]), fmt='%.16e',
-                   header=(f'delta_W del gato {name} (cv = {CV_NEG}), malla x[{X[0]}, {X[-1]}] ({len(X)}) '
+                   header=(f'delta_W del gato {name} (cv = {cv}), malla x[{X[0]}, {X[-1]}] ({len(X)}) '
                            f'x p[{P[0]}, {P[-1]}] ({len(P)})\n'
                            'Lam delta_plus delta_minus norm_plus norm_minus'))
 
 
-def save_wigner_stacks(WS):
+def save_wigner_stacks(WS, cv):
     np.savetxt(os.path.join(DATA_DIR, 'wigner_grid.txt'), np.column_stack([WIG_GRID, WIG_GRID]),
                fmt='%.16e', header='malla de las Wigner de un modo (alpha = x + i p)\nx p')
     for lam_val, w in WS.items():
         eta, r, kap = w['x']
         hdr = (f'W(alpha), filas = p, columnas = x (wigner_grid.txt); lambda1 = lambda2 = {lam_val}, '
-               f'cv = {CV_WIG}, rama +')
-        np.savetxt(os.path.join(DATA_DIR, f'wigner_exact_lam{lam_val}.txt'), w['W_ex'], fmt='%.10e',
+               f'cv = {cv}, rama +')
+        np.savetxt(os.path.join(DATA_DIR, f'wigner_exact_lam{lam_val}_cv{cv}.txt'), w['W_ex'], fmt='%.10e',
                    header=hdr + ', exacto')
-        np.savetxt(os.path.join(DATA_DIR, f'wigner_var_lam{lam_val}.txt'), w['W_v'], fmt='%.10e',
+        np.savetxt(os.path.join(DATA_DIR, f'wigner_var_lam{lam_val}_cv{cv}.txt'), w['W_v'], fmt='%.10e',
                    header=hdr + f', (P+AP)S: eta = {eta:.10e} r = {r:.10e} kappa = {kap:.10e}')
 
 
-def save_joint_wigner(WJ):
+def save_joint_wigner(WJ, cv):
     np.savetxt(os.path.join(DATA_DIR, 'wigner_joint_grid.txt'), UV_JOINT, fmt='%.16e',
                header='malla u = v de la Wigner conjunta')
     eta, r, g1, g2, kap = WJ['pars']
     hdr = (f'W(alpha1, alpha2), filas = v (alpha2), columnas = u (alpha1); Lambda = {LAM_JOINT}, '
-           f'theta = {THETA_JOINT}, sector = {SECTOR_JOINT}, sign = {SIGN_JOINT:+d}, cv = {CV_JOINT}, '
+           f'theta = {THETA_JOINT}, sector = {SECTOR_JOINT}, sign = {SIGN_JOINT:+d}, cv = {cv}, '
            f'N_FOCK = {N_FOCK_JOINT}; eta = {eta:.10e} r = {r:.10e} kappa = {kap:.10e}')
-    np.savetxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_ReRe.txt'), WJ['W_re'], fmt='%.10e',
+    np.savetxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_cv{cv}_ReRe.txt'), WJ['W_re'], fmt='%.10e',
                header=hdr + ', corte Re-Re')
-    np.savetxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_ImIm.txt'), WJ['W_im'], fmt='%.10e',
+    np.savetxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_cv{cv}_ImIm.txt'), WJ['W_im'], fmt='%.10e',
                header=hdr + ', corte Im-Im')
 
 
@@ -910,7 +905,7 @@ def tests_pre():
                   f'  κ={xn[2]:.4f}')
     # C3: gato bimodal: centros de los lóbulos y norma
     lam1 = LAM_JOINT*np.cos(THETA_JOINT); lam2 = LAM_JOINT*np.sin(THETA_JOINT)
-    psi, pars = cat_bimodal(lam1, lam2, CV_JOINT, 30, 'even', +1)
+    psi, pars = cat_bimodal(lam1, lam2, 1.0, 30, 'even', +1)
     print(f'[C3] bimodal: norma={np.linalg.norm(psi):.12f}  '
           f'(η,r,κ)=({pars[0]:.4f},{pars[1]:.4f},{pars[4]:.4f})  γ1={pars[2]:.4f}  γ2={pars[3]:.4f}')
     # C4: paridad del gato variacional: <Π> = sign
@@ -974,9 +969,10 @@ def tests_post(S, NE, NV):
                   f'{np.nanmax(np.abs(d["pp_cf"][nocut] - 0.5*(1 + np.abs(d["o_var"][nocut])))):.2e}')
             th_nc = np.sqrt(np.clip(-0.5*np.log(np.clip(np.abs(d["o_var"][nocut]), 1e-300, None)), 0.0, None))
             print(f'[C9] cv={cv}:  Λ < 1.5: máx|β̃_cerrada - β̃(o_var)| = {np.nanmax(np.abs(d["th_cf"][nocut] - th_nc)):.2e}')
-    print(f'[C7] máx|∫W - 1|: exacto (+)={np.nanmax(np.abs(NE["np_"]-1)):.2e} '
-          f'(−)={np.nanmax(np.abs(NE["nm"]-1)):.2e} | variacional (+)={np.nanmax(np.abs(NV["np_"]-1)):.2e} '
-          f'(−)={np.nanmax(np.abs(NV["nm"]-1)):.2e}')
+    for cv in NE:
+        print(f'[C7] cv={cv}  máx|∫W - 1|: exacto (+)={np.nanmax(np.abs(NE[cv]["np_"]-1)):.2e} '
+              f'(−)={np.nanmax(np.abs(NE[cv]["nm"]-1)):.2e} | variacional (+)={np.nanmax(np.abs(NV[cv]["np_"]-1)):.2e} '
+              f'(−)={np.nanmax(np.abs(NV[cv]["nm"]-1)):.2e}')
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -992,16 +988,18 @@ if __name__ == '__main__':
     S = compute_sweeps()
     save_sweeps(S)
 
-    print('Negatividad δ_W ...', flush=True)
-    NE = compute_negativity_exact()
-    NV = compute_negativity_var()
-    save_negativity(NE, NV)
+    NE, NV = {}, {}
+    for cv in cv_list:
+        print(f'Negatividad δ_W, J/ω0 = {cv} ...', flush=True)
+        NE[cv] = compute_negativity_exact(cv)
+        NV[cv] = compute_negativity_var(cv)
+        save_negativity(NE[cv], NV[cv], cv)
 
-    print('Wigner exacto vs variacional ...', flush=True)
-    save_wigner_stacks(compute_wigner_stacks())
+        print(f'Wigner exacto vs variacional, J/ω0 = {cv} ...', flush=True)
+        save_wigner_stacks(compute_wigner_stacks(cv), cv)
 
-    print('Wigner conjunta de dos modos ...', flush=True)
-    save_joint_wigner(compute_joint_wigner())
+        print(f'Wigner conjunta de dos modos, J/ω0 = {cv} ...', flush=True)
+        save_joint_wigner(compute_joint_wigner(cv), cv)
 
     tests_post(S, NE, NV)
     print(f'\nDatos guardados en: {DATA_DIR}')

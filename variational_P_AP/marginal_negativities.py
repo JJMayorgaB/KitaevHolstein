@@ -260,6 +260,20 @@ def wigner_dm_negativity(rho, xvec, pvec, verbose=False, n_jobs=-1):
     delta = 0.5 * (np.trapz(np.trapz(np.abs(W), xvec, axis=1), pvec) - 1.0)
     return delta, norm_check
 
+def wigner_dm_negativity_fast(rho, xvec, pvec):
+    """La misma W(α), α = x + ip, y la misma integración que wigner_dm_negativity,
+    evaluada con qutip.wigner (recurrencia de Clenshaw): con g = 2 qutip usa
+    α = g(x + ip)/2 = x + ip y la normalización ∫W dx dp = 1.
+    Coincide con wigner_dm_negativity a ~1e-11 y es ~500 veces más rápida."""
+    import qutip as qt
+    W = qt.wigner(qt.Qobj(rho), xvec, pvec, g=2.0)
+    if not hasattr(np, 'trapz'):
+        np.trapz = np.trapezoid
+    norm_check = np.trapz(np.trapz(W, xvec, axis=1), pvec)
+    delta = 0.5 * (np.trapz(np.trapz(np.abs(W), xvec, axis=1), pvec) - 1.0)
+    return delta, norm_check
+
+
 def pad_state(psi_ph, nph_old, nph_new):
     """Expande el estado de dos modos de nph_old² a nph_new² con ceros en Fock altos."""
     pm = psi_ph.reshape(nph_old, nph_old)
@@ -268,7 +282,7 @@ def pad_state(psi_ph, nph_old, nph_new):
     return pm_new.reshape(-1)
 
 
-def marginal_negativities_exact(psi_ph, nph, xvec, pvec, n_jobs=-1):
+def marginal_negativities_exact(psi_ph, nph, xvec, pvec, n_jobs=-1, fast=False):
     """δ1, δ2 marginales + E_N, S y rango efectivo. El estado llega ya con la
        dimensión final (el padding se hace en exact_cat_bimodal, antes de los
        desplazamientos)."""
@@ -279,8 +293,12 @@ def marginal_negativities_exact(psi_ph, nph, xvec, pvec, n_jobs=-1):
     # entrelazamiento inter-cavidad (estado bipartito puro)
     E_N, S, rank_eff = entanglement_measures_pure(rho1)
 
-    d1, n1 = wigner_dm_negativity(rho1, xvec, pvec, n_jobs=n_jobs)
-    d2, n2 = wigner_dm_negativity(rho2, xvec, pvec, n_jobs=n_jobs)
+    if fast:
+        d1, n1 = wigner_dm_negativity_fast(rho1, xvec, pvec)
+        d2, n2 = wigner_dm_negativity_fast(rho2, xvec, pvec)
+    else:
+        d1, n1 = wigner_dm_negativity(rho1, xvec, pvec, n_jobs=n_jobs)
+        d2, n2 = wigner_dm_negativity(rho2, xvec, pvec, n_jobs=n_jobs)
     return d1, d2, n1, n2, E_N, S, rank_eff
 
 
@@ -325,14 +343,15 @@ def exact_cat_bimodal(g1, g2, evec_ex, nph, n_ph, omega0=1.0, sign=+1,
 if __name__ == "__main__":
 
     omega0   = 1.0
-    cv_val   = 1.0
+    CV_LIST  = [1.0, 0.5, 1.5]    # J_α/ω0 (t = Δ = cv)
     LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]      # Λ fijos
     sector   = 'odd'
     SIGNS    = (+1, -1)           # ramas |Cat_+> (sign=+1) y |Cat_-> (sign=-1), mismo estado base
     nph_wig  = 85
     N_JOBS   = 128                # cores a usar
-    DENSE_EIGH = False            # True: eigh denso de ambos sectores (diagonalize_LF_sweet, ~5 GB por job)
+    DENSE_EIGH  = False           # True: eigh denso de ambos sectores (diagonalize_LF_sweet, ~5 GB por job)
                                   # False: solo el estado base del sector usado (Lanczos, pocos MB por job)
+    FAST_WIGNER = True            # True: W con qutip.wigner (segundos por θ); False: wigner_dm_negativity (~40 min por θ)
 
     nth      = 64
     theta_arr = np.linspace(0.0, np.pi, nth)
@@ -342,8 +361,18 @@ if __name__ == "__main__":
 
     HERE   = os.path.dirname(os.path.abspath(__file__))
     OUTDIR = os.path.join(HERE, 'Figures', 'cat', 'data')
-    TMPDIR = {(L, sg): os.path.join(OUTDIR, f'_tmp_exact_sign{sg:+d}_{L:.6f}')
-              for L in LAM_LIST for sg in SIGNS}
+
+    def fname(cv_val, Lam_fix, sign):
+        return os.path.join(OUTDIR, f'marginal_negativity_vs_theta_exact_sign{sign:+d}_cv{cv_val}_{Lam_fix}.txt')
+
+    # (J_α/ω0, Λ) ya calculados (ambas ramas guardadas): no se recalculan
+    PAIRS = [(cv, L) for cv in CV_LIST for L in LAM_LIST
+             if not all(os.path.exists(fname(cv, L, sg)) for sg in SIGNS)]
+    for cv, L in [(cv, L) for cv in CV_LIST for L in LAM_LIST if (cv, L) not in PAIRS]:
+        print(f'J_α/ω0 = {cv}, Λ = {L:.4f}: ya calculado, se omite', flush=True)
+
+    TMPDIR = {(cv, L, sg): os.path.join(OUTDIR, f'_tmp_exact_sign{sg:+d}_cv{cv}_{L:.6f}')
+              for cv, L in PAIRS for sg in SIGNS}
     for d in TMPDIR.values():
         os.makedirs(d, exist_ok=True)
 
@@ -354,12 +383,12 @@ if __name__ == "__main__":
                 return tuple(row[1:])
         return None
 
-    def _one_theta(Lam_fix, k, th):
+    def _one_theta(cv_val, Lam_fix, k, th):
         # si ambas ramas ya están en el guardado incremental (relanzamiento), no se repite
-        f_tmp = {sg: os.path.join(TMPDIR[(Lam_fix, sg)], f'{k:03d}.txt') for sg in SIGNS}
+        f_tmp = {sg: os.path.join(TMPDIR[(cv_val, Lam_fix, sg)], f'{k:03d}.txt') for sg in SIGNS}
         done  = {sg: _load_tmp(f_tmp[sg], th) for sg in SIGNS}
         if all(v is not None for v in done.values()):
-            return Lam_fix, k, done
+            return cv_val, Lam_fix, k, done
 
         g1 = Lam_fix * np.cos(th)
         g2 = Lam_fix * np.sin(th)
@@ -381,34 +410,34 @@ if __name__ == "__main__":
                                               nph_out=nph_wig)
 
             d1, d2, n1, n2, E_N, S, rk = marginal_negativities_exact(
-                psi_ph, nph_f, xvec, pvec, n_jobs=1)   # serial adentro
+                psi_ph, nph_f, xvec, pvec, n_jobs=1, fast=FAST_WIGNER)   # serial adentro
 
             # guardado incremental: si el job muere, no se pierde lo avanzado
             np.savetxt(f_tmp[sign], np.array([[th, d1, d2, n1, n2, E_N, S, rk]]), fmt='%.8e')
             done[sign] = (d1, d2, n1, n2, E_N, S, rk)
 
-            print(f"  Λ={Lam_fix:.4f}  sign={sign:+d}  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  "
+            print(f"  J/ω0={cv_val}  Λ={Lam_fix:.4f}  sign={sign:+d}  θ={th:5.3f}  δ1={d1:.4f} δ2={d2:.4f}  "
                   f"E_N={E_N:.4f} S={S:.4f}  rank={rk}  (∫W1={n1:.3f}, ∫W2={n2:.3f})", flush=True)
-        return Lam_fix, k, done
+        return cv_val, Lam_fix, k, done
 
-    tasks = [(L, k, th) for L in LAM_LIST for k, th in enumerate(theta_arr)]
-    print(f'Tareas: {len(tasks)}   ({len(LAM_LIST)} Λ × {nth} θ), ramas {SIGNS} en cada una', flush=True)
+    tasks = [(cv, L, k, th) for cv, L in PAIRS for k, th in enumerate(theta_arr)]
+    print(f'Tareas: {len(tasks)}   ({len(PAIRS)} pares (J/ω0, Λ) × {nth} θ), ramas {SIGNS} en cada una', flush=True)
 
     _res = Parallel(n_jobs=N_JOBS, verbose=10)(
-        delayed(_one_theta)(L, k, th) for L, k, th in tasks)
+        delayed(_one_theta)(cv, L, k, th) for cv, L, k, th in tasks)
 
-    for Lam_fix in LAM_LIST:
+    for cv_val, Lam_fix in PAIRS:
         for sign in SIGNS:
             _out = np.full((nth, 8), np.nan)
             _out[:, 0] = theta_arr
-            for L, k, done in _res:
-                if L == Lam_fix:
+            for cv, L, k, done in _res:
+                if cv == cv_val and L == Lam_fix:
                     _out[k, 1:] = done[sign]
 
-            fname = os.path.join(OUTDIR, f'marginal_negativity_vs_theta_exact_sign{sign:+d}_{Lam_fix}.txt')
-            np.savetxt(fname, _out, fmt='%.8e',
-                       header=(f'exacto, sector={sector}, sign={sign:+d}, Lambda={Lam_fix}\n'
+            np.savetxt(fname(cv_val, Lam_fix, sign), _out, fmt='%.8e',
+                       header=(f'exacto, sector={sector}, sign={sign:+d}, J/omega0={cv_val}, Lambda={Lam_fix}, '
+                               f'Wigner={"qutip.wigner" if FAST_WIGNER else "wigner_dm_negativity"}\n'
                                'theta  delta1  delta2  norm1  norm2  E_N  S  rank_eff'))
-            print(f'Guardado: {fname}')
+            print(f'Guardado: {fname(cv_val, Lam_fix, sign)}')
 
     print("Barrido marginal θ (exacto) listo.")

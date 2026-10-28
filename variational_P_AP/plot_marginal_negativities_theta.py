@@ -6,13 +6,17 @@ import matplotlib.lines as mlines
 import sys
 import subprocess
 
-# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
-# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+# Rama del gato y J_α/ω0:  python script.py +1 1.0   (|Cat_+>, J_α/ω0 = 1.0)
+# Sin argumentos genera todas las ramas y todas las J_α/ω0 de CV_LIST, cada una con sus figuras
+# (se omiten las combinaciones que todavía no tienen datos).
+CV_LIST = (0.5, 1.0, 1.5)
 if len(sys.argv) == 1:
     for _sg in ('+1', '-1'):
-        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+        for _cv in CV_LIST:
+            subprocess.run([sys.executable, os.path.abspath(__file__), _sg, str(_cv)], check=True)
     sys.exit(0)
 SIGN = int(sys.argv[1])
+CV   = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 
 plt.rcParams.update({
     'text.usetex': True,
@@ -42,11 +46,15 @@ plt.rcParams.update({
 # ══════════════════════════════════════════════════════════════════
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC  = os.path.join(HERE, 'Figures', 'cat', 'data')
-OUT  = os.path.join(HERE, 'Figures', 'cat')
+OUT  = os.path.join(HERE, 'Figures', 'cat', 'info_resources', 'cuts')
 
 LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]
 LAM_LAB  = [r'2\sqrt{2}', r'3\sqrt{2}']
 os.makedirs(OUT, exist_ok=True)
+if not any(os.path.exists(os.path.join(SRC, f'marginal_negativity_vs_theta_{k}_sign{SIGN:+d}_cv{CV}_{L}.txt'))
+           for k in ('exact', 'PAPS') for L in LAM_LIST):
+    print(f'sign={SIGN:+d}, J/ω0={CV}: sin cortes en θ, se omite')
+    sys.exit(0)
 
 C1 = plt.cm.seismic(0.88)          # δ1, E_N
 C2 = plt.cm.seismic(0.12)          # δ2, S
@@ -56,7 +64,7 @@ COL = dict(theta=0, d1=1, d2=2, n1=3, n2=4, EN=5, S=6, rk=7)
 
 
 def _load(kind, Lam):
-    f = os.path.join(SRC, f'marginal_negativity_vs_theta_{kind}_sign{SIGN:+d}_{Lam}.txt')
+    f = os.path.join(SRC, f'marginal_negativity_vs_theta_{kind}_sign{SIGN:+d}_cv{CV}_{Lam}.txt')
     if not os.path.exists(f):
         print(f'  (no está {os.path.basename(f)}: se grafica sin él)')
         return None
@@ -122,7 +130,7 @@ h = [mlines.Line2D([], [], color='gray', marker='o', mfc='none', mew=1.2, ls='no
 axes[1, 1].legend(handles=h, **LEG)
 
 plt.tight_layout()
-name = f'cut_theta_marginal_entanglement_PAPS_sign{SIGN:+d}'
+name = f'cut_theta_marginal_entanglement_PAPS_sign{SIGN:+d}_cv{CV}'
 for ext in ('jpg', 'svg'):
     fig.savefig(os.path.join(OUT, f'{name}.{ext}'), bbox_inches='tight',
                 transparent=False, dpi=300)

@@ -6,13 +6,17 @@ import matplotlib.lines as mlines
 import sys
 import subprocess
 
-# Rama del gato: python script.py +1  (|Cat_+>)   o   python script.py -1  (|Cat_->).
-# Sin argumento genera las dos ramas, cada una con sus propias figuras.
+# Rama del gato y J_α/ω0:  python script.py +1 1.0   (|Cat_+>, J_α/ω0 = 1.0)
+# Sin argumentos genera todas las ramas y todas las J_α/ω0 de CV_LIST, cada una con sus figuras
+# (se omiten las combinaciones que todavía no tienen datos).
+CV_LIST = (0.5, 1.0, 1.5)
 if len(sys.argv) == 1:
     for _sg in ('+1', '-1'):
-        subprocess.run([sys.executable, os.path.abspath(__file__), _sg], check=True)
+        for _cv in CV_LIST:
+            subprocess.run([sys.executable, os.path.abspath(__file__), _sg, str(_cv)], check=True)
     sys.exit(0)
 SIGN = int(sys.argv[1])
+CV   = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
 
 plt.rcParams.update({
     'text.usetex': True,
@@ -40,24 +44,28 @@ plt.rcParams.update({
 # ══════════════════════════════════════════════════════════════════
 omega0 = 1.0
 HERE   = os.path.dirname(os.path.abspath(__file__))
-OUT    = os.path.join(HERE, 'Figures', 'cat')
+OUT    = os.path.join(HERE, 'Figures', 'cat', 'info_resources', 'relations')
 CMAP   = 'inferno'
 
 # malla de cada conjunto de datos
-nLam_ex,  nth_ex  = 200, 200     # exacto (mapas viejos, carpeta KitaevHolstein)
-nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama SIGN
+nLam_ex,  nth_ex  = 300, 300     # exacto (carpeta KitaevHolstein, subcarpeta cv{...})
+nLam_var, nth_var = 300, 300     # variacional (P+AP)S, rama SIGN, subcarpeta cv{...}
 
 LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2), 4*np.sqrt(2)]
 LAM_LAB  = [r'2\sqrt{2}', r'3\sqrt{2}', r'4\sqrt{2}']
 
 SRC_EX  = os.path.join(HERE, '..',
                        f'cat_state_information_resources_exact_sign{SIGN:+d}_omega0{omega0:.1f}'
-                       f'_nL_{nLam_ex}_nth_{nth_ex}')
+                       f'_nL_{nLam_ex}_nth_{nth_ex}', f'cv{CV}')
 SRC_VAR = os.path.join(HERE, 'Figures', 'cat', 'data',
                        f'cat_state_information_resources_PAPS_sign{SIGN:+d}_omega0{omega0:.1f}'
-                       f'_nL_{nLam_var}_nth_{nth_var}')
-TAG = f'nLex{nLam_ex}_nLvar{nLam_var}_PAPS_sign{SIGN:+d}'
+                       f'_nL_{nLam_var}_nth_{nth_var}', f'cv{CV}')
+TAG = f'nLex{nLam_ex}_nLvar{nLam_var}_PAPS_sign{SIGN:+d}_cv{CV}'
 os.makedirs(OUT, exist_ok=True)
+for _src in (SRC_EX, SRC_VAR):
+    if not os.path.isdir(_src):
+        print(f'sign={SIGN:+d}, J/ω0={CV}: no está {_src}, se omite')
+        sys.exit(0)
 
 
 def _load(src):

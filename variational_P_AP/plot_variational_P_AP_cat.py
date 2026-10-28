@@ -28,7 +28,7 @@ from scipy.interpolate import UnivariateSpline, RegularGridInterpolator
 warnings.filterwarnings('ignore')
 
 # parámetros de la corrida (los mismos con los que se generaron los datos)
-from variational_P_AP_cat import (OUT_DIR, DATA_DIR, GRIDS, cv_list, RHO, CV_2X2, WIG_POINTS,
+from variational_P_AP_cat import (OUT_DIR, DATA_DIR, GRIDS, cv_list, RHO, WIG_POINTS,
                                   LAM_JOINT, THETA_JOINT, SECTOR_JOINT, SIGN_JOINT, joint_tag)
 
 
@@ -48,8 +48,8 @@ def load_sweeps():
             for g in GRIDS for cv in cv_list}
 
 
-def load_negativity(name):
-    d = _load_named(os.path.join(DATA_DIR, f'negativity_{name}.txt'))
+def load_negativity(name, cv):
+    d = _load_named(os.path.join(DATA_DIR, f'negativity_{name}_cv{cv}.txt'))
     return dict(Lam=d['Lam'], dp=d['delta_plus'], dm=d['delta_minus'],
                 np_=d['norm_plus'], nm=d['norm_minus'])
 
@@ -64,14 +64,19 @@ def _cuts(W, xvec, pvec):
 # ══════════════════════════════════════════════════════════════════
 #  ESTILO (el original; si no hay LaTeX, mathtext con fuente cm)
 # ══════════════════════════════════════════════════════════════════
+PANEL = (5.0, 4.0)          # tamaño de cada panel (ancho, alto) en pulgadas
+# diseño anterior (tamaño y letras), solo para cat_infid_1D, cat_infid_1D_twin y las Wigner apiladas
+_RC_PREV = {'font.size': 24, 'axes.labelsize': 24, 'axes.titlesize': 24, 'xtick.labelsize': 20,
+            'ytick.labelsize': 20, 'legend.fontsize': 18, 'figure.titlesize': 22}
+
 _BASE_RC = {
-    'font.size': 24,
-    'axes.labelsize': 24,
-    'axes.titlesize': 24,
-    'xtick.labelsize': 20,
-    'ytick.labelsize': 20,
-    'legend.fontsize': 18,
-    'figure.titlesize': 22,
+    'font.size': 26,
+    'axes.labelsize': 26,
+    'axes.titlesize': 26,
+    'xtick.labelsize': 22,
+    'ytick.labelsize': 22,
+    'legend.fontsize': 20,
+    'figure.titlesize': 24,
     'axes.facecolor': 'white',
     'figure.facecolor': 'white',
     'axes.edgecolor': 'black',
@@ -313,10 +318,13 @@ def plot_joint_wigner_2x2(W_re, W_im, uvec, vvec, theta, axis_lim=(-3.5, 3.5), c
     return fig, (ax_a, ax_b, ax_c, ax_d)
 
 
-def _save(fig, name, svg=False):
-    fig.savefig(os.path.join(OUT_DIR, name + '.png'), bbox_inches='tight', transparent=False, dpi=300)
+def _save(fig, name, svg=False, sub=''):
+    """Guarda en Figures/cat/<sub>/ (fidelity, cat_params, negativity, wigner, checks)."""
+    out = os.path.join(OUT_DIR, sub)
+    os.makedirs(out, exist_ok=True)
+    fig.savefig(os.path.join(out, name + '.png'), bbox_inches='tight', transparent=False, dpi=300)
     if svg:
-        fig.savefig(os.path.join(OUT_DIR, name + '.svg'), bbox_inches='tight', transparent=False)
+        fig.savefig(os.path.join(out, name + '.svg'), bbox_inches='tight', transparent=False)
     plt.close(fig)
 
 
@@ -331,7 +339,7 @@ def _plot_signed(ax, x, y, sym, ls, color, lw=1.0):
 # ══════════════════════════════════════════════════════════════════
 C_A = plt.cm.seismic(0.12)    # azul
 C_B = plt.cm.seismic(0.88)    # rojo
-LS  = {0.5: '-', 1.0: '--', 1.5: ':'}
+LS  = {0.5: '--', 1.0: '-', 1.5: ':'}
 
 
 def fig_params(S, suffix):
@@ -341,24 +349,24 @@ def fig_params(S, suffix):
         for cv in cv_list:
             d = S[('params', cv)]
             Lc = d['Lam']
-            fig, ax = plt.subplots(figsize=(6, 5.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc,  d['eta']/2, '-',  color=C_B, lw=1.0, label=r'$\eta/2$')
             ax.plot(Lc, -d['r'],     '--', color=C_A, lw=1.0, label=r'$-r$')
             ax.plot(Lc,  d['kap'],   '-.', color='k', lw=1.0, label=r'$\kappa$')
             ax.set_xlim(Lc[0], 5.0)                   # mismo rango en Λ que la infidelidad
             ax.set_ylim(0.0, ylim_by_cv[cv])
-            ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'Variational parameters')
+            ax.set_xlabel(r'$\Lambda$')        # sin etiqueta en y: la leyenda ya nombra cada parámetro
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       borderpad=0.6, handlelength=2.2, labelspacing=0.4)
             plt.tight_layout()
-            _save(fig, f'cut_cat_params_rho{RHO}_cv{cv}{suffix}')
+            _save(fig, f'cut_cat_params_rho{RHO}_cv{cv}{suffix}', sub='cat_params')
 
 
 def fig_infid(S, suffix):
     C_PLUS, C_MINUS = 'black', plt.cm.seismic(0.95)
     Lam_max = 5.0
-    with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in'}):
+    with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in', **_RC_PREV}):
         # ── versión con eje doble ──
         fig, ax_o1 = plt.subplots(figsize=(6.5, 5.5))
         ax_e1 = ax_o1.twinx()
@@ -385,7 +393,7 @@ def fig_infid(S, suffix):
                      edgecolor='black', framealpha=0.0, fancybox=False,
                      borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'cat_infid_1D_twin_rho{RHO}{suffix}')
+        _save(fig, f'cat_infid_1D_twin_rho{RHO}{suffix}', sub='fidelity')
 
         # ── versión con un solo eje ──
         fig, ax = plt.subplots(figsize=(5.5, 5.0))
@@ -403,7 +411,7 @@ def fig_infid(S, suffix):
                   edgecolor='black', framealpha=0.0, fancybox=False,
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'cat_infid_1D_rho{RHO}{suffix}')
+        _save(fig, f'cat_infid_1D_rho{RHO}{suffix}', sub='fidelity')
 
 
 def _cut_quantities(d):
@@ -428,7 +436,7 @@ def fig_prob_theta_overlap(S, suffix):
             C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
             pp_e = _spline_smooth(Lc, _smooth(q['pp_e'], window=15, poly=3), s_factor=1e-4)
             pm_e = _spline_smooth(Lc, _smooth(q['pm_e'], window=15, poly=3), s_factor=1e-4)
-            fig, ax = plt.subplots(figsize=(6.0, 4.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['pp_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_PLUS,  lw=1.5)
             ax.plot(Lc, pp_e,      '--', color=C_PLUS,  lw=1.5)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['pm_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_MINUS, lw=1.5)
@@ -446,11 +454,11 @@ def fig_prob_theta_overlap(S, suffix):
             ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       loc='center left', borderpad=0.6, handlelength=2.2, labelspacing=0.4)
             plt.tight_layout()
-            _save(fig, f'prob_cat_rho{RHO}_cv{cv}{suffix}')
+            _save(fig, f'prob_cat_rho{RHO}_cv{cv}{suffix}', sub='cat_params')
 
             # (a') probabilidades + fórmula cerrada de (P+AP)S (sin corte en Fock), figura de control
             d_cf = S[('cut', cv)]
-            fig, ax = plt.subplots(figsize=(6.0, 4.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['pp_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_PLUS,  lw=1.5)
             ax.plot(Lc, pp_e,      '--', color=C_PLUS,  lw=1.5)
             ax.plot(Lc, d_cf['pp_cf'], ':', color=C_PLUS,  lw=1.8)
@@ -469,12 +477,12 @@ def fig_prob_theta_overlap(S, suffix):
             ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       loc='center left', borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
             plt.tight_layout()
-            _save(fig, f'prob_cat_rho{RHO}_cv{cv}{suffix}_CHECKFORMULA')
+            _save(fig, f'prob_cat_rho{RHO}_cv{cv}{suffix}_CHECKFORMULA', sub='checks')
 
             # (b) β̃
             C_VAR, C_EX = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
             th_e = _spline_smooth(Lc, _smooth(q['th_e'], window=13, poly=3), s_factor=1e-4)
-            fig, ax = plt.subplots(figsize=(6, 5.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='variational')
             ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='exact')
             ax.plot(Lc, Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
@@ -484,10 +492,10 @@ def fig_prob_theta_overlap(S, suffix):
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       borderpad=0.6, handlelength=2.2, labelspacing=0.4)
             plt.tight_layout()
-            _save(fig, f'theta_tilde_rho{RHO}_cv{cv}{suffix}')
+            _save(fig, f'theta_tilde_rho{RHO}_cv{cv}{suffix}', sub='cat_params')
 
             # (b') β̃ + fórmula cerrada de (P+AP)S (sin corte en Fock), figura de control
-            fig, ax = plt.subplots(figsize=(6, 5.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='variational')
             ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='exact')
             ax.plot(Lc, S[('cut', cv)]['th_cf'], '-.', color=C_VAR, lw=1.5, label='closed formula')
@@ -498,11 +506,11 @@ def fig_prob_theta_overlap(S, suffix):
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
             plt.tight_layout()
-            _save(fig, f'theta_tilde_rho{RHO}_cv{cv}{suffix}_CHECKFORMULA')
+            _save(fig, f'theta_tilde_rho{RHO}_cv{cv}{suffix}_CHECKFORMULA', sub='checks')
 
             # (c) solapamientos
             ov_e = _smooth(q['ov_e'], window=39, poly=3)
-            fig, ax = plt.subplots(figsize=(6, 5.5))
+            fig, ax = plt.subplots(figsize=PANEL)
             ax.plot(Lc, _smooth(q['ov_v'], window=39, poly=3), '-',  color=C_VAR, lw=1.5, label='variational')
             ax.plot(Lc, ov_e,      '--', color=C_EX,  lw=1.5, label='exact')
             ax.plot(Lc, np.exp(-Lc**2/2), 'k:', lw=1.5, label=r'$e^{-\Lambda^2/2}$')
@@ -513,14 +521,14 @@ def fig_prob_theta_overlap(S, suffix):
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       borderpad=0.6, handlelength=2.2, labelspacing=0.4)
             plt.tight_layout()
-            _save(fig, f'overlap_cat_rho{RHO}_cv{cv}{suffix}')
+            _save(fig, f'overlap_cat_rho{RHO}_cv{cv}{suffix}', sub='cat_params')
 
 
-def fig_negativity(NE, NV, suffix):
+def fig_negativity(NE, NV, cv, suffix):
     C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
     with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in'}):
         # exacto
-        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NE['Lam'], NE['dp'], '--', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NE['Lam'], NE['dm'], '--', color=C_MINUS, lw=1.5, label=r'$(-)$')
         ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
@@ -530,9 +538,9 @@ def fig_negativity(NE, NV, suffix):
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='lower right',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'negativity_vs_Lambda{suffix}')
+        _save(fig, f'negativity_vs_Lambda_cv{cv}{suffix}', sub='negativity')
 
-        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NE['Lam'], NE['np_'], '--', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NE['Lam'], NE['nm'],  '--', color=C_MINUS, lw=1.5, label=r'$(-)$')
         ax.axvline(2.45, color='k', ls=':', lw=1.5)
@@ -542,10 +550,10 @@ def fig_negativity(NE, NV, suffix):
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='best',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'diag_norm_check{suffix}')
+        _save(fig, f'diag_norm_check_cv{cv}{suffix}', sub='checks')
 
         # variacional
-        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NV['Lam'], NV['dp'], '-', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NV['Lam'], NV['dm'], '-', color=C_MINUS, lw=1.5, label=r'$(-)$')
         ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
@@ -555,9 +563,9 @@ def fig_negativity(NE, NV, suffix):
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='lower right',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'negativity_variational_vs_Lambda{suffix}')
+        _save(fig, f'negativity_variational_vs_Lambda_cv{cv}{suffix}', sub='negativity')
 
-        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NV['Lam'], NV['np_'], '-', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NV['Lam'], NV['nm'],  '-', color=C_MINUS, lw=1.5, label=r'$(-)$')
         ax.axhline(1.0, color='k', ls='--', lw=1.0)
@@ -567,10 +575,10 @@ def fig_negativity(NE, NV, suffix):
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='best',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'diag_norm_check_variational{suffix}')
+        _save(fig, f'diag_norm_check_variational_cv{cv}{suffix}', sub='checks')
 
         # comparación
-        fig, ax = plt.subplots(figsize=(6.5, 4.5))
+        fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NE['Lam'], NE['dp'], '--', color=C_PLUS,  lw=1.25)
         ax.plot(NE['Lam'], NE['dm'], '--', color=C_MINUS, lw=1.25)
         ax.plot(NV['Lam'], NV['dp'], '-',  color=C_PLUS,  lw=1.5)
@@ -585,11 +593,10 @@ def fig_negativity(NE, NV, suffix):
         ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                   loc='lower right', borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
-        _save(fig, f'negativity_exact_vs_variational{suffix}')
+        _save(fig, f'negativity_exact_vs_variational_cv{cv}{suffix}', sub='negativity')
 
 
-def fig_2x2(S, NE, NV, suffix, checkformula=False):
-    cv = CV_2X2
+def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
     LAM_XMAX = 5.0
     XTICKS   = np.arange(0, np.floor(LAM_XMAX) + 1, 1)
     C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
@@ -600,7 +607,7 @@ def fig_2x2(S, NE, NV, suffix, checkformula=False):
     pp_e = _spline_smooth(Lc, _smooth(q['pp_e'], window=15, poly=3), s_factor=1e-4)
     pm_e = _spline_smooth(Lc, _smooth(q['pm_e'], window=15, poly=3), s_factor=1e-4)
 
-    fig = plt.figure(figsize=(10.0, 8.0))
+    fig = plt.figure(figsize=(2*PANEL[0], 2*PANEL[1]))
     gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.08, wspace=0.28)
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1], sharex=ax_a)
@@ -681,29 +688,84 @@ def fig_2x2(S, NE, NV, suffix, checkformula=False):
                        left=True, right=True, size=5, width=1.5)
     for ax in (ax_a, ax_b):
         ax.tick_params(axis='x', labelbottom=False)
-    _save(fig, f'infid_beta_prob_neg_2x2_rho{RHO}_cv{cv}{suffix}' + ('_CHECKFORMULA' if checkformula else ''), svg=True)
+    _save(fig, f'infid_beta_prob_neg_2x2_rho{RHO}_cv{cv}{suffix}' + ('_CHECKFORMULA' if checkformula else ''), svg=True,
+          sub=('checks' if checkformula else 'fidelity'))
 
-def fig_wigner_stacks(suffix):
+def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15):
+    """Paneles (a) y (d) de fig_2x2 en una fila: infidelidad y δ_W.
+    En (b) el exacto va con círculos abiertos, sin suavizar, uno cada ~ex_spacing en Λ."""
+    LAM_XMAX = 5.0
+    XTICKS   = np.arange(0, np.floor(LAM_XMAX) + 1, 1)
+    C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
+
+    fig = plt.figure(figsize=(2*PANEL[0], PANEL[1]))
+    gs  = gridspec.GridSpec(1, 2, figure=fig, wspace=0.28)
+    ax_a = fig.add_subplot(gs[0, 0])
+    ax_d = fig.add_subplot(gs[0, 1], sharex=ax_a)
+
+    # (a) infidelidad (igual que el panel (a) de fig_2x2)
+    for cv_i in cv_list:
+        ray = S[('twin', cv_i)]
+        ax_a.plot(ray['Lam'], ray['infid_p'], LS[cv_i], color=C_PLUS,  lw=1.4)
+        ax_a.plot(ray['Lam'], ray['infid_m'], LS[cv_i], color=C_MINUS, lw=1.4)
+    ax_a.set_xlabel(r'$\Lambda$')
+    ax_a.set_ylabel(r'$1-F$')
+    fmt_a = SciFormatter('%1.1f')
+    fmt_a.set_powerlimits((0, 0))
+    ax_a.yaxis.set_major_formatter(fmt_a)
+    ax_a.yaxis.get_offset_text().set_fontsize(22)
+    handles  = [mlines.Line2D([], [], color='gray', ls=LS[cv_i], lw=1.4,
+                              label=rf'$J_\alpha/\omega_0={cv_i}$') for cv_i in cv_list]
+    handles += [mlines.Line2D([], [], color=C_PLUS,  lw=1.4, label=r'$|\mathrm{Cat}_+\rangle$'),
+                mlines.Line2D([], [], color=C_MINUS, lw=1.4, label=r'$|\mathrm{Cat}_-\rangle$')]
+    ax_a.legend(handles=handles, loc='upper left', ncol=1, frameon=True, edgecolor='black',
+                framealpha=0.0, fancybox=False, borderpad=0.25, handlelength=1.2, labelspacing=0.4, fontsize=16)
+    ax_a.text(0.85, 0.95, r'(a)', transform=ax_a.transAxes, ha='left', va='top', fontsize=20)
+
+    # (b) δ_W: variacional en línea, exacto con círculos abiertos
+    step = max(1, int(round(ex_spacing/np.median(np.diff(NE['Lam'])))))
+    ax_d.plot(NV['Lam'], NV['dp'], '-', color=C_PLUS,  lw=1.5)
+    ax_d.plot(NV['Lam'], NV['dm'], '-', color=C_MINUS, lw=1.5)
+    ax_d.plot(NE['Lam'][::step], NE['dp'][::step], 'o', mfc='none', mec=C_PLUS,  mew=1.2, ms=5)
+    ax_d.plot(NE['Lam'][::step], NE['dm'][::step], 'o', mfc='none', mec=C_MINUS, mew=1.2, ms=5)
+    ax_d.set_xlabel(r'$\Lambda$')
+    ax_d.set_ylabel(r'$\delta_W$')
+    leg = [mlines.Line2D([], [], color='gray', ls='none', marker='o', mfc='none', mew=1.2, ms=6, label='exact'),
+           mlines.Line2D([], [], color='gray', lw=1.5, label='variational')]
+    ax_d.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
+                loc='lower right', borderpad=0.25, handlelength=1.2, labelspacing=0.4, fontsize=16)
+    ax_d.text(0.05, 0.95, r'(b)', transform=ax_d.transAxes, ha='left', va='top', fontsize=22)
+
+    ax_a.set_xlim(0.0, LAM_XMAX)
+    ax_a.set_xticks(XTICKS)
+    for ax in (ax_a, ax_d):
+        ax.tick_params(axis='both', direction='in', bottom=True, top=True,
+                       left=True, right=True, size=5, width=1.5)
+    _save(fig, f'infid_neg_1x2_rho{RHO}_cv{cv}{suffix}', svg=True, sub='fidelity')
+
+
+def fig_wigner_stacks(cv, suffix):
     g = _load_named(os.path.join(DATA_DIR, 'wigner_grid.txt'))
     xvec, pvec = g['x'], g['p']
     for lam_val, figsize in WIG_POINTS:
-        W_ex = np.loadtxt(os.path.join(DATA_DIR, f'wigner_exact_lam{lam_val}.txt'))
-        W_v  = np.loadtxt(os.path.join(DATA_DIR, f'wigner_var_lam{lam_val}.txt'))
+        W_ex = np.loadtxt(os.path.join(DATA_DIR, f'wigner_exact_lam{lam_val}_cv{cv}.txt'))
+        W_v  = np.loadtxt(os.path.join(DATA_DIR, f'wigner_var_lam{lam_val}_cv{cv}.txt'))
         cp_ex, cx_ex = _cuts(W_ex, xvec, pvec)
         cp_v,  cx_v  = _cuts(W_v,  xvec, pvec)
-        fig, _ = plot_wigner_stack_num([W_ex, W_v], [cp_ex, cp_v], [cx_ex, cx_v],
-                                       xvec=xvec, pvec=pvec, axis_lim=(-4.2, 4.2),
-                                       labeleven=True, figsize=figsize)
-        _save(fig, f'wigner_cat_exact_vs_var_lam{lam_val}{suffix}')
+        with plt.rc_context(_RC_PREV):
+            fig, _ = plot_wigner_stack_num([W_ex, W_v], [cp_ex, cp_v], [cx_ex, cx_v],
+                                           xvec=xvec, pvec=pvec, axis_lim=(-4.2, 4.2),
+                                           labeleven=True, figsize=figsize)
+            _save(fig, f'wigner_cat_exact_vs_var_lam{lam_val}_cv{cv}{suffix}', sub='wigner')
 
 
-def fig_joint_wigner(suffix):
+def fig_joint_wigner(cv, suffix):
     uv   = np.loadtxt(os.path.join(DATA_DIR, 'wigner_joint_grid.txt'))
-    W_re = np.loadtxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_ReRe.txt'))
-    W_im = np.loadtxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_ImIm.txt'))
+    W_re = np.loadtxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_cv{cv}_ReRe.txt'))
+    W_im = np.loadtxt(os.path.join(DATA_DIR, f'wigner_joint_{joint_tag()}_cv{cv}_ImIm.txt'))
     fig, _ = plot_joint_wigner_2x2(W_re, W_im, uv, uv, THETA_JOINT,
-                                   axis_lim=(-2.5, 2.5), figsize=(7.0, 7.0), share_scale=True)
-    _save(fig, f'wigner_joint_{joint_tag()}{suffix}', svg=True)
+                                   axis_lim=(-2.5, 2.5), figsize=(2*PANEL[0], PANEL[1]), share_scale=True)
+    _save(fig, f'wigner_joint_{joint_tag()}_cv{cv}{suffix}', svg=True, sub='wigner')
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -714,16 +776,22 @@ if __name__ == '__main__':
     setup_style()
     suffix = '_PAPS'
 
-    S  = load_sweeps()
-    NE = load_negativity('exact')
-    NV = load_negativity('variational')
-
+    S = load_sweeps()
     fig_params(S, suffix)
     fig_infid(S, suffix)
     fig_prob_theta_overlap(S, suffix)
-    fig_negativity(NE, NV, suffix)
-    fig_2x2(S, NE, NV, suffix)
-    fig_2x2(S, NE, NV, suffix, checkformula=True)
-    fig_wigner_stacks(suffix)
-    fig_joint_wigner(suffix)
+
+    # δ_W, Wigner y Wigner conjunta: una tanda de figuras por J_α/ω0 (se omite la que no tenga datos)
+    for cv in cv_list:
+        if not os.path.exists(os.path.join(DATA_DIR, f'negativity_exact_cv{cv}.txt')):
+            print(f'J/ω0 = {cv}: sin datos de δ_W / Wigner, se omite')
+            continue
+        NE = load_negativity('exact', cv)
+        NV = load_negativity('variational', cv)
+        fig_negativity(NE, NV, cv, suffix)
+        fig_2x2(S, NE, NV, cv, suffix)
+        fig_2x2(S, NE, NV, cv, suffix, checkformula=True)
+        fig_1x2(S, NE, NV, cv, suffix)
+        fig_wigner_stacks(cv, suffix)
+        fig_joint_wigner(cv, suffix)
     print(f'\nFiguras guardadas en: {OUT_DIR}')
