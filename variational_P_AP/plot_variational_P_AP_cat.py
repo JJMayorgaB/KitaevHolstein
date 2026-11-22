@@ -27,6 +27,8 @@ from scipy.interpolate import UnivariateSpline, RegularGridInterpolator
 
 warnings.filterwarnings('ignore')
 
+SQ2 = np.sqrt(2.0)    # las figuras usan Λ/√2 en el eje (los datos guardan Λ)
+
 # parámetros de la corrida (los mismos con los que se generaron los datos)
 from variational_P_AP_cat import (OUT_DIR, DATA_DIR, GRIDS, cv_list, RHO, WIG_POINTS,
                                   LAM_JOINT, THETA_JOINT, SECTOR_JOINT, SIGN_JOINT, joint_tag)
@@ -44,13 +46,16 @@ def _load_named(path):
 
 
 def load_sweeps():
-    return {(g, cv): _load_named(os.path.join(DATA_DIR, f'sweep_{g}_cv{cv}.txt'))
-            for g in GRIDS for cv in cv_list}
+    S = {(g, cv): _load_named(os.path.join(DATA_DIR, f'sweep_{g}_cv{cv}.txt'))
+         for g in GRIDS for cv in cv_list}
+    for d in S.values():
+        d['Lam'] = d['Lam'] / SQ2         # eje en Λ/√2
+    return S
 
 
 def load_negativity(name, cv):
     d = _load_named(os.path.join(DATA_DIR, f'negativity_{name}_cv{cv}.txt'))
-    return dict(Lam=d['Lam'], dp=d['delta_plus'], dm=d['delta_minus'],
+    return dict(Lam=d['Lam']/SQ2, dp=d['delta_plus'], dm=d['delta_minus'],
                 np_=d['norm_plus'], nm=d['norm_minus'])
 
 
@@ -353,9 +358,9 @@ def fig_params(S, suffix):
             ax.plot(Lc,  d['eta']/2, '-',  color=C_B, lw=1.0, label=r'$\eta/2$')
             ax.plot(Lc, -d['r'],     '--', color=C_A, lw=1.0, label=r'$-r$')
             ax.plot(Lc,  d['kap'],   '-.', color='k', lw=1.0, label=r'$\kappa$')
-            ax.set_xlim(Lc[0], 5.0)                   # mismo rango en Λ que la infidelidad
+            ax.set_xlim(Lc[0], 5.0/SQ2)               # mismo rango en Λ que la infidelidad
             ax.set_ylim(0.0, ylim_by_cv[cv])
-            ax.set_xlabel(r'$\Lambda$')        # sin etiqueta en y: la leyenda ya nombra cada parámetro
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$')        # sin etiqueta en y: la leyenda ya nombra cada parámetro
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       borderpad=0.6, handlelength=2.2, labelspacing=0.4)
@@ -365,7 +370,7 @@ def fig_params(S, suffix):
 
 def fig_infid(S, suffix):
     C_PLUS, C_MINUS = 'black', plt.cm.seismic(0.95)
-    Lam_max = 5.0
+    Lam_max = 5.0/SQ2
     with plt.rc_context({'xtick.direction': 'in', 'ytick.direction': 'in', **_RC_PREV}):
         # ── versión con eje doble ──
         fig, ax_o1 = plt.subplots(figsize=(6.5, 5.5))
@@ -375,7 +380,7 @@ def fig_infid(S, suffix):
             ax_o1.plot(d['Lam'], d['infid_p'], LS[cv], color=C_PLUS,  lw=1.4)
             ax_e1.plot(d['Lam'], d['infid_m'], LS[cv], color=C_MINUS, lw=1.4)
         Lc = d['Lam']
-        ax_o1.set_xlabel(r'$\Lambda$')
+        ax_o1.set_xlabel(r'$\Lambda/\sqrt{2}$')
         ax_o1.set_ylabel(r'$1-|\langle\mathrm{Cat}_+^{\mathrm{exact}}|\mathrm{Cat}_+^{\mathrm{var}}\rangle|^2$', color=C_PLUS)
         ax_o1.tick_params(axis='y', colors=C_PLUS, direction='in')
         ax_o1.tick_params(axis='x', direction='in')
@@ -402,7 +407,7 @@ def fig_infid(S, suffix):
             ax.plot(d['Lam'], d['infid_p'], LS[cv], color=C_PLUS,  lw=1.4)
             ax.plot(d['Lam'], d['infid_m'], LS[cv], color=C_MINUS, lw=1.4)
         Lc = d['Lam']
-        ax.set_xlabel(r'$\Lambda$')
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$')
         ax.set_ylabel(r'$1-\mathcal{F}$')
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
         ax.set_xlim(Lc[0], Lam_max)
@@ -441,16 +446,16 @@ def fig_prob_theta_overlap(S, suffix):
             ax.plot(Lc, pp_e,      '--', color=C_PLUS,  lw=1.5)
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['pm_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_MINUS, lw=1.5)
             ax.plot(Lc, pm_e,      '--', color=C_MINUS, lw=1.5)
-            ax.set_xlabel(r'$\Lambda$')
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$')
             ax.set_ylabel(r'Measurement probability', labelpad=5)
             ax.set_ylim(-0.02, 1.02)
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
-            ax.set_xlim(Lc[0], 5)
+            ax.set_xlim(Lc[0], 5/SQ2)
             ax.yaxis.set_major_locator(ticker.FixedLocator([0.0, 0.5, 1.0]))
             ax.text(0.975, 0.85, r'$\dfrac{1}{4\,|\mathcal{N}_+|^{2}}$', transform=ax.transAxes, color=C_PLUS,  ha='right', va='center', fontsize=20)
             ax.text(0.975, 0.15, r'$\dfrac{1}{4\,|\mathcal{N}_-|^{2}}$', transform=ax.transAxes, color=C_MINUS, ha='right', va='center', fontsize=20)
-            leg = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='variational'),
-                   mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='exact')]
+            leg = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='Variational'),
+                   mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='Exact')]
             ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       loc='center left', borderpad=0.6, handlelength=2.2, labelspacing=0.4)
             plt.tight_layout()
@@ -465,14 +470,14 @@ def fig_prob_theta_overlap(S, suffix):
             ax.plot(Lc, _spline_smooth(Lc, _smooth(q['pm_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_MINUS, lw=1.5)
             ax.plot(Lc, pm_e,      '--', color=C_MINUS, lw=1.5)
             ax.plot(Lc, d_cf['pm_cf'], ':', color=C_MINUS, lw=1.8)
-            ax.set_xlabel(r'$\Lambda$')
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$')
             ax.set_ylabel(r'Measurement probability', labelpad=5)
             ax.set_ylim(-0.02, 1.02)
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
-            ax.set_xlim(Lc[0], 5)
+            ax.set_xlim(Lc[0], 5/SQ2)
             ax.yaxis.set_major_locator(ticker.FixedLocator([0.0, 0.5, 1.0]))
-            leg = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='variational'),
-                   mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='exact'),
+            leg = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='Variational'),
+                   mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='Exact'),
                    mlines.Line2D([], [], color='k', ls=':',  lw=1.8, label='closed formula')]
             ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                       loc='center left', borderpad=0.6, handlelength=2.2, labelspacing=0.4, fontsize=16)
@@ -483,10 +488,10 @@ def fig_prob_theta_overlap(S, suffix):
             C_VAR, C_EX = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
             th_e = _spline_smooth(Lc, _smooth(q['th_e'], window=13, poly=3), s_factor=1e-4)
             fig, ax = plt.subplots(figsize=PANEL)
-            ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='variational')
-            ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='exact')
-            ax.plot(Lc, Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
-            ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\tilde{\beta}$')
+            ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='Variational')
+            ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='Exact')
+            ax.plot(Lc, SQ2*Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\tilde{\beta}$')
             ax.set_xlim(0.0, Lc[-1])
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
@@ -496,11 +501,11 @@ def fig_prob_theta_overlap(S, suffix):
 
             # (b') β̃ + fórmula cerrada de (P+AP)S (sin corte en Fock), figura de control
             fig, ax = plt.subplots(figsize=PANEL)
-            ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='variational')
-            ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='exact')
+            ax.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color=C_VAR, lw=1.5, label='Variational')
+            ax.plot(Lc, th_e,      '--', color=C_EX,  lw=1.5, label='Exact')
             ax.plot(Lc, S[('cut', cv)]['th_cf'], '-.', color=C_VAR, lw=1.5, label='closed formula')
-            ax.plot(Lc, Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
-            ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\tilde{\beta}$')
+            ax.plot(Lc, SQ2*Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\tilde{\beta}$')
             ax.set_xlim(0.0, Lc[-1])
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
             ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
@@ -511,10 +516,10 @@ def fig_prob_theta_overlap(S, suffix):
             # (c) solapamientos
             ov_e = _smooth(q['ov_e'], window=39, poly=3)
             fig, ax = plt.subplots(figsize=PANEL)
-            ax.plot(Lc, _smooth(q['ov_v'], window=39, poly=3), '-',  color=C_VAR, lw=1.5, label='variational')
-            ax.plot(Lc, ov_e,      '--', color=C_EX,  lw=1.5, label='exact')
-            ax.plot(Lc, np.exp(-Lc**2/2), 'k:', lw=1.5, label=r'$e^{-\Lambda^2/2}$')
-            ax.set_xlabel(r'$\Lambda$')
+            ax.plot(Lc, _smooth(q['ov_v'], window=39, poly=3), '-',  color=C_VAR, lw=1.5, label='Variational')
+            ax.plot(Lc, ov_e,      '--', color=C_EX,  lw=1.5, label='Exact')
+            ax.plot(Lc, np.exp(-(SQ2*Lc)**2/2), 'k:', lw=1.5, label=r'$e^{-\Lambda^2/2}$')
+            ax.set_xlabel(r'$\Lambda/\sqrt{2}$')
             ax.set_ylabel(r'$|\langle\varphi_{b,1}|\hat D(\Lambda)|\varphi_{b,2}\rangle|$')
             ax.set_xlim(Lc[0], Lc[-1]); ax.set_ylim(-0.02, 1.02)
             ax.tick_params(axis='both', direction='in', bottom=True, top=True, right=True, left=True)
@@ -531,10 +536,10 @@ def fig_negativity(NE, NV, cv, suffix):
         fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NE['Lam'], NE['dp'], '--', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NE['Lam'], NE['dm'], '--', color=C_MINUS, lw=1.5, label=r'$(-)$')
-        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\delta$')
         ax.set_xlim(NE['Lam'][0], NE['Lam'][-1])
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
-        ax.set_xticks(np.arange(0, 7, 1))
+        ax.set_xticks(np.arange(0, 5, 1))
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='lower right',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
@@ -543,8 +548,8 @@ def fig_negativity(NE, NV, cv, suffix):
         fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NE['Lam'], NE['np_'], '--', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NE['Lam'], NE['nm'],  '--', color=C_MINUS, lw=1.5, label=r'$(-)$')
-        ax.axvline(2.45, color='k', ls=':', lw=1.5)
-        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\int W\,\mathrm{d}^2\alpha$')
+        ax.axvline(2.45/SQ2, color='k', ls=':', lw=1.5)
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\int W\,\mathrm{d}^2\alpha$')
         ax.set_xlim(NE['Lam'][0], NE['Lam'][-1])
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='best',
@@ -556,10 +561,10 @@ def fig_negativity(NE, NV, cv, suffix):
         fig, ax = plt.subplots(figsize=PANEL)
         ax.plot(NV['Lam'], NV['dp'], '-', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NV['Lam'], NV['dm'], '-', color=C_MINUS, lw=1.5, label=r'$(-)$')
-        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
-        ax.set_xlim(NV['Lam'][0], 7.0)
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\delta$')
+        ax.set_xlim(NV['Lam'][0], 7.0/SQ2)
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
-        ax.set_xticks(np.arange(0, 7, 1))
+        ax.set_xticks(np.arange(0, 5, 1))
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='lower right',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
         plt.tight_layout()
@@ -569,8 +574,8 @@ def fig_negativity(NE, NV, cv, suffix):
         ax.plot(NV['Lam'], NV['np_'], '-', color=C_PLUS,  lw=1.5, label=r'$(+)$')
         ax.plot(NV['Lam'], NV['nm'],  '-', color=C_MINUS, lw=1.5, label=r'$(-)$')
         ax.axhline(1.0, color='k', ls='--', lw=1.0)
-        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\int W\,\mathrm{d}^2\alpha$')
-        ax.set_xlim(NV['Lam'][0], 7.0)
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\int W\,\mathrm{d}^2\alpha$')
+        ax.set_xlim(NV['Lam'][0], 7.0/SQ2)
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False, loc='best',
                   borderpad=0.6, handlelength=2.2, labelspacing=0.4)
@@ -583,10 +588,10 @@ def fig_negativity(NE, NV, cv, suffix):
         ax.plot(NE['Lam'], NE['dm'], '--', color=C_MINUS, lw=1.25)
         ax.plot(NV['Lam'], NV['dp'], '-',  color=C_PLUS,  lw=1.5)
         ax.plot(NV['Lam'], NV['dm'], '-',  color=C_MINUS, lw=1.5)
-        ax.axvline(2*np.sqrt(2), color='k', ls=':', lw=1.5)
-        ax.set_xlabel(r'$\Lambda$'); ax.set_ylabel(r'$\delta$')
-        ax.set_xlim(0.01, 7.0)
-        ax.set_xticks(np.arange(0, 7, 1))
+        ax.axvline(2.0, color='k', ls=':', lw=1.5)
+        ax.set_xlabel(r'$\Lambda/\sqrt{2}$'); ax.set_ylabel(r'$\delta$')
+        ax.set_xlim(0.01/SQ2, 7.0/SQ2)
+        ax.set_xticks(np.arange(0, 5, 1))
         ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True)
         leg = [mlines.Line2D([], [], color=C_PLUS,  lw=1.5, label=r'$(+)$'),
                mlines.Line2D([], [], color=C_MINUS, lw=1.5, label=r'$(-)$')]
@@ -597,7 +602,7 @@ def fig_negativity(NE, NV, cv, suffix):
 
 
 def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
-    LAM_XMAX = 5.0
+    LAM_XMAX = 5.0/SQ2
     XTICKS   = np.arange(0, np.floor(LAM_XMAX) + 1, 1)
     C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
 
@@ -633,7 +638,7 @@ def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
 
     ax_b.plot(Lc, _spline_smooth(Lc, _smooth(q['th_v'], window=13, poly=3), s_factor=1e-4), '-',  color='k', lw=1.5)
     ax_b.plot(Lc, th_e,      '--', color='k', lw=1.5)
-    ax_b.plot(Lc, Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
+    ax_b.plot(Lc, SQ2*Lc/2.0, 'k:', lw=1.5, label=r'$\Lambda/2$')
     if checkformula:                # fórmula cerrada de β̃ de (P+AP)S (sin corte en Fock)
         ax_b.plot(Lc, S[('cut', cv)]['th_cf'], '-.', color='k', lw=1.5, label='closed formula')
     ax_b.set_ylabel(r'$\tilde{\beta}$')
@@ -650,7 +655,7 @@ def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
     ax_c.plot(Lc, pp_e,      '--', color=C_PLUS,  lw=1.5)
     ax_c.plot(Lc, _spline_smooth(Lc, _smooth(q['pm_v'], window=15, poly=3), s_factor=1e-4), '-',  color=C_MINUS, lw=1.5)
     ax_c.plot(Lc, pm_e,      '--', color=C_MINUS, lw=1.5)
-    ax_c.set_xlabel(r'$\Lambda$')
+    ax_c.set_xlabel(r'$\Lambda/\sqrt{2}$')
     ax_c.set_ylabel(r'$p_{\pm}$', labelpad=5)
     ax_c.set_ylim(-0.02, 1.02)
     ax_c.yaxis.set_major_locator(ticker.FixedLocator([0.0, 0.5, 1.0]))
@@ -663,8 +668,8 @@ def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
         d_cf = S[('cut', cv)]
         ax_c.plot(Lc, d_cf['pp_cf'], ':', color=C_PLUS,  lw=1.8)
         ax_c.plot(Lc, d_cf['pm_cf'], ':', color=C_MINUS, lw=1.8)
-        leg_c = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='variational'),
-                 mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='exact'),
+        leg_c = [mlines.Line2D([], [], color='k', ls='-',  lw=1.5, label='Variational'),
+                 mlines.Line2D([], [], color='k', ls='--', lw=1.5, label='Exact'),
                  mlines.Line2D([], [], color='k', ls=':',  lw=1.8, label='closed formula')]
         ax_c.legend(handles=leg_c, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                     loc='center left', borderpad=0.25, handlelength=1.6, labelspacing=0.3, fontsize=14)
@@ -673,7 +678,7 @@ def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
     ax_d.plot(NE['Lam'], _smooth(NE['dm'], window=13, poly=3), '--', color=C_MINUS, lw=1.25)
     ax_d.plot(NV['Lam'], NV['dp'], '-', color=C_PLUS,  lw=1.5)
     ax_d.plot(NV['Lam'], NV['dm'], '-', color=C_MINUS, lw=1.5)
-    ax_d.set_xlabel(r'$\Lambda$')
+    ax_d.set_xlabel(r'$\Lambda/\sqrt{2}$')
     ax_d.set_ylabel(r'$\delta_W$')
     leg = [mlines.Line2D([], [], color=C_PLUS,  lw=1.5, label=r'$|\mathrm{Cat}_{+}\rangle$'),
            mlines.Line2D([], [], color=C_MINUS, lw=1.5, label=r'$|\mathrm{Cat}_{-}\rangle$')]
@@ -691,10 +696,10 @@ def fig_2x2(S, NE, NV, cv, suffix, checkformula=False):
     _save(fig, f'infid_beta_prob_neg_2x2_rho{RHO}_cv{cv}{suffix}' + ('_CHECKFORMULA' if checkformula else ''), svg=True,
           sub=('checks' if checkformula else 'fidelity'))
 
-def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15):
+def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15/SQ2):
     """Paneles (a) y (d) de fig_2x2 en una fila: infidelidad y δ_W.
-    En (b) el exacto va con círculos abiertos, sin suavizar, uno cada ~ex_spacing en Λ."""
-    LAM_XMAX = 5.0
+    En (b) el exacto va con círculos abiertos, sin suavizar, uno cada ~ex_spacing en Λ/√2."""
+    LAM_XMAX = 5.0/SQ2
     XTICKS   = np.arange(0, np.floor(LAM_XMAX) + 1, 1)
     C_PLUS, C_MINUS = plt.cm.seismic(0.88), plt.cm.seismic(0.12)
 
@@ -708,7 +713,7 @@ def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15):
         ray = S[('twin', cv_i)]
         ax_a.plot(ray['Lam'], ray['infid_p'], LS[cv_i], color=C_PLUS,  lw=1.4)
         ax_a.plot(ray['Lam'], ray['infid_m'], LS[cv_i], color=C_MINUS, lw=1.4)
-    ax_a.set_xlabel(r'$\Lambda$')
+    ax_a.set_xlabel(r'$\Lambda/\sqrt{2}$')
     ax_a.set_ylabel(r'$1-F$')
     fmt_a = SciFormatter('%1.1f')
     fmt_a.set_powerlimits((0, 0))
@@ -720,7 +725,7 @@ def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15):
                 mlines.Line2D([], [], color=C_MINUS, lw=1.4, label=r'$|\mathrm{Cat}_-\rangle$')]
     ax_a.legend(handles=handles, loc='upper left', ncol=1, frameon=True, edgecolor='black',
                 framealpha=0.0, fancybox=False, borderpad=0.25, handlelength=1.2, labelspacing=0.4, fontsize=16)
-    ax_a.text(0.85, 0.95, r'(a)', transform=ax_a.transAxes, ha='left', va='top', fontsize=20)
+    ax_a.text(0.85, 0.95, r'(a)', transform=ax_a.transAxes, ha='left', va='top', fontsize=22)
 
     # (b) δ_W: variacional en línea, exacto con círculos abiertos
     step = max(1, int(round(ex_spacing/np.median(np.diff(NE['Lam'])))))
@@ -728,10 +733,10 @@ def fig_1x2(S, NE, NV, cv, suffix, ex_spacing=0.15):
     ax_d.plot(NV['Lam'], NV['dm'], '-', color=C_MINUS, lw=1.5)
     ax_d.plot(NE['Lam'][::step], NE['dp'][::step], 'o', mfc='none', mec=C_PLUS,  mew=1.2, ms=5)
     ax_d.plot(NE['Lam'][::step], NE['dm'][::step], 'o', mfc='none', mec=C_MINUS, mew=1.2, ms=5)
-    ax_d.set_xlabel(r'$\Lambda$')
+    ax_d.set_xlabel(r'$\Lambda/\sqrt{2}$')
     ax_d.set_ylabel(r'$\delta_W$')
-    leg = [mlines.Line2D([], [], color='gray', ls='none', marker='o', mfc='none', mew=1.2, ms=6, label='exact'),
-           mlines.Line2D([], [], color='gray', lw=1.5, label='variational')]
+    leg = [mlines.Line2D([], [], color='gray', ls='none', marker='o', mfc='none', mew=1.2, ms=6, label='Exact'),
+           mlines.Line2D([], [], color='gray', lw=1.5, label='Variational')]
     ax_d.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
                 loc='lower right', borderpad=0.25, handlelength=1.2, labelspacing=0.4, fontsize=16)
     ax_d.text(0.05, 0.95, r'(b)', transform=ax_d.transAxes, ha='left', va='top', fontsize=22)

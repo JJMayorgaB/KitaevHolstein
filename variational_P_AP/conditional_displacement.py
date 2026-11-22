@@ -382,7 +382,7 @@ C_PAPS = 'tab:green'
 
 
 def _legend(ax):
-    h = [mlines.Line2D([], [], color=C_EX,   ls='-',  lw=1.6, label='exact'),
+    h = [mlines.Line2D([], [], color=C_EX,   ls='-',  lw=1.6, label='Exact'),
          mlines.Line2D([], [], color=C_PAPS, ls='-.', lw=1.6, label=r'$(\mathrm{P}+\mathrm{AP})\hat S$')]
     ax.legend(handles=h, frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
               borderpad=0.5, handlelength=1.8, ncol=1, loc='upper right', bbox_to_anchor=(1.0, 0.86))   # panel (a), una columna, bajo la etiqueta

@@ -66,7 +66,7 @@ for _src in (SRC_EX, SRC_VAR):
 
 
 def _load(src):
-    D = dict(Lam   = np.loadtxt(os.path.join(src, 'coord_Lam.txt')),
+    D = dict(Lam   = np.loadtxt(os.path.join(src, 'coord_Lam.txt')) / np.sqrt(2.0),   # eje en Λ/√2
              theta = np.loadtxt(os.path.join(src, 'coord_theta.txt')),
              S     = np.loadtxt(os.path.join(src, 'S.txt')),
              d1    = np.loadtxt(os.path.join(src, 'delta1.txt')),
@@ -85,9 +85,9 @@ xtick_pos = np.arange(0, 5) * np.pi/2
 xtick_lab = [r'$0$', r'$\pi/2$', r'$\pi$', r'$3\pi/2$', r'$2\pi$']
 
 _sq2   = np.sqrt(2.0)
-_n_max = int(np.floor(EX['Lam'][-1]/_sq2))
-ytick_pos = np.array([k*_sq2 for k in range(1, _n_max+1)])
-ytick_lab = ([r'$\sqrt{2}$'] + [rf'${k}\sqrt{{2}}$' for k in range(2, _n_max+1)])
+_n_max = int(np.floor(EX['Lam'][-1]))
+ytick_pos = np.arange(1, _n_max+1)
+ytick_lab = [rf'${k}$' for k in range(1, _n_max+1)]
 
 ROWS = [('S',  r'$S$'),
         ('d1', r'$\delta_1$'),
@@ -137,7 +137,7 @@ for r, (key, cb_label) in enumerate(ROWS):
         if c > 0:
             ax.tick_params(axis='y', labelleft=False)
         else:
-            ax.set_ylabel(r'$\Lambda$', labelpad=5)
+            ax.set_ylabel(r'$\Lambda/\sqrt{2}$', labelpad=5)
 
     gs_cb = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=gs[r, 2],
                                              height_ratios=CB_RATIOS, hspace=0.0)

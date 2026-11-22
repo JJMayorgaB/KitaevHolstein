@@ -49,7 +49,7 @@ SRC  = os.path.join(HERE, 'Figures', 'cat', 'data')
 OUT  = os.path.join(HERE, 'Figures', 'cat', 'info_resources', 'cuts')
 
 LAM_LIST = [2*np.sqrt(2), 3*np.sqrt(2)]
-LAM_LAB  = [r'2\sqrt{2}', r'3\sqrt{2}']
+LAM_LAB  = [r'2', r'3']                        # Λ/√2
 os.makedirs(OUT, exist_ok=True)
 if not any(os.path.exists(os.path.join(SRC, f'marginal_negativity_vs_theta_{k}_sign{SIGN:+d}_cv{CV}_{L}.txt'))
            for k in ('exact', 'PAPS') for L in LAM_LIST):
@@ -107,7 +107,7 @@ for c, (Lam, lab) in enumerate(zip(LAM_LIST, LAM_LAB)):
         ax.text(0.04, 0.95, PANEL_LABELS[r][c], transform=ax.transAxes,
                 ha='left', va='top')
         if r == 0:
-            ax.set_title(rf'$\Lambda = {lab}$', pad=10)
+            ax.set_title(rf'$\Lambda/\sqrt{{2}} = {lab}$', pad=10)
 
 # escala común por fila, con espacio arriba para etiquetas y leyendas
 for r in range(2):
@@ -125,7 +125,7 @@ for r, (q1, q2, _) in enumerate(ROWS):
     h = [mlines.Line2D([], [], color=col, lw=1.8, label=qlab) for _, qlab, col in (q1, q2)]
     axes[r, 0].legend(handles=h, **LEG)
 h = [mlines.Line2D([], [], color='gray', marker='o', mfc='none', mew=1.2, ls='none',
-                   ms=6, label='exact'),
+                   ms=6, label='Exact'),
      mlines.Line2D([], [], color='gray', lw=1.8, label=r'$(\mathrm{P}+\mathrm{AP})\mathrm{S}$')]
 axes[1, 1].legend(handles=h, **LEG)
 

@@ -134,10 +134,10 @@ def _curve(xkey, ykey, xlabel, ylabel, name, Lam_target, Lam_label):
             transform=ax.transAxes, ha='right', va='top', fontsize=22)
 
     leg = [mlines.Line2D([], [], color='gray', marker='o', ls='none',
-                         markersize=7, markeredgecolor='none', label='exact'),
+                         markersize=7, markeredgecolor='none', label='Exact'),
            mlines.Line2D([], [], color='gray', marker='s', ls='none',
                          markersize=7, markeredgecolor='none',
-                         markeredgewidth=0.6, label='variational')]
+                         markeredgewidth=0.6, label='Variational')]
     ax.legend(handles=leg, frameon=True, edgecolor='black', framealpha=0.0,
               fancybox=False, loc='best', borderpad=0.5,
               handlelength=1.2, labelspacing=0.3)

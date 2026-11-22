@@ -66,7 +66,7 @@ if not os.path.isdir(SRC):
     sys.exit(0)
 
 # ── carga ─────────────────────────────────────────────────────────
-Lam_arr   = np.loadtxt(os.path.join(SRC, 'coord_Lam.txt'))
+Lam_arr   = np.loadtxt(os.path.join(SRC, 'coord_Lam.txt')) / np.sqrt(2.0)   # eje en Λ/√2
 theta_arr = np.loadtxt(os.path.join(SRC, 'coord_theta.txt'))
 d1 = np.loadtxt(os.path.join(SRC, 'delta1.txt'))
 d2 = np.loadtxt(os.path.join(SRC, 'delta2.txt'))
@@ -89,11 +89,11 @@ extent = [theta_arr[0], theta_arr[-1], Lam_arr[0], Lam_arr[-1]]
 xtick_pos = np.arange(0, 5) * np.pi/2
 xtick_lab = [r'$0$', r'$\pi/2$', r'$\pi$', r'$3\pi/2$', r'$2\pi$']
 
-# eje Λ en múltiplos de √2 (en cada marca, λ1 = λ2 = k)
+# eje Λ/√2 en enteros (en θ = π/4, en cada marca λ1 = λ2 = k)
 _sq2   = np.sqrt(2.0)
-_n_max = int(np.floor(Lam_arr[-1]/_sq2))
-ytick_pos = np.array([k*_sq2 for k in range(1, _n_max+1)])
-ytick_lab = ([r'$\sqrt{2}$'] + [rf'${k}\sqrt{{2}}$' for k in range(2, _n_max+1)])
+_n_max = int(np.floor(Lam_arr[-1]))
+ytick_pos = np.arange(1, _n_max+1)
+ytick_lab = [rf'${k}$' for k in range(1, _n_max+1)]
 
 
 def _fmt_axes(ax, show_ylabel=True, col_ticks='white'):
@@ -104,7 +104,7 @@ def _fmt_axes(ax, show_ylabel=True, col_ticks='white'):
     ax.set_yticklabels(ytick_lab)
     ax.tick_params(axis='both', direction='in', bottom=True, top=True, left=True, right=True, color=col_ticks, size=7.5, width=2.0)
     if show_ylabel:
-        ax.set_ylabel(r'$\Lambda$', labelpad=5)
+        ax.set_ylabel(r'$\Lambda/\sqrt{2}$', labelpad=5)
     else:
         ax.tick_params(axis='y', labelleft=False)
 
@@ -151,7 +151,7 @@ def _pair(dA, dB, labA, labB, cbar_label, name, col_ticks='white', vmin=0.0,
 
 
 def _fmt_cut_axes(ax):
-    ax.set_xlabel(r'$\Lambda$')
+    ax.set_xlabel(r'$\Lambda/\sqrt{2}$')
     ax.set_xlim(Lam_arr[0], Lam_arr[-1])
     ax.set_xticks(ytick_pos)
     ax.set_xticklabels(ytick_lab)
@@ -172,8 +172,8 @@ def _cut_entanglement(theta_cut, name):
     ax.plot(Lam_arr, EN[:, it], '-',  color=C_EN, lw=1.8, label=r'$E_N$')
     ax.plot(Lam_arr, S[:, it],  '-', color=C_S,  lw=1.8, label=r'$S$')
     ax.axhline(1.0, color='k', ls=':', lw=1.2)
-    ax.set_xticks([0, np.sqrt(2), 2*np.sqrt(2), 3*np.sqrt(2), 4*np.sqrt(2)])
-    ax.set_xticklabels([r'$0$', r'$\sqrt{2}$', r'$2\sqrt{2}$', r'$3\sqrt{2}$', r'$4\sqrt{2}$'])
+    ax.set_xticks([0, 1, 2, 3, 4])
+    ax.set_xticklabels([r'$0$', r'$1$', r'$2$', r'$3$', r'$4$'])
     ax.set_ylabel(r'$E_N,\ S$')
     _fmt_cut_axes(ax)
     ax.legend(frameon=True, edgecolor='black', framealpha=0.0, fancybox=False,
