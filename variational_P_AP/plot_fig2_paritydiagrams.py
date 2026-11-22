@@ -104,19 +104,13 @@ if 1.0 in dE_2d:
 # ══════════════════════════════════════════════════════════════════
 norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-fig = plt.figure(figsize=(10.0, 10.0))               # 2x2 paneles + fila de la colorbar
-# fila 0: colorbar horizontal sobre (a); fila 1: paneles 2x2
-outer = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[0.035, 1.0], hspace=0.09)
-gs_cb = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[0], wspace=0.38)
-gs    = gridspec.GridSpecFromSubplotSpec(2, 2, subplot_spec=outer[1],
-                                         hspace=0.35, wspace=0.38)
+fig = plt.figure(figsize=(10.0, 10.0))               # 2x2 paneles (colorbar dentro de (a))
+gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.35, wspace=0.38)
 
 ax_a = fig.add_subplot(gs[0, 0])
 ax_b = fig.add_subplot(gs[0, 1])
 ax_c = fig.add_subplot(gs[1, 0], sharex=ax_b, sharey=ax_b)
 ax_d = fig.add_subplot(gs[1, 1], sharex=ax_b, sharey=ax_b)
-cax_host = fig.add_subplot(gs_cb[0, 0])             # celda del ancho de (a): colorbar + etiqueta
-cax_host.axis('off')
 
 
 def _ticks(ax, col='white'):
@@ -157,20 +151,14 @@ for ax, D, lab in zip([ax_b, ax_c, ax_d], DELTA_2D, [r'(b)', r'(c)', r'(d)']):
             ha='left', va='top', color='white')
     _ticks(ax)
 
-# ---------- colorbar horizontal común, sobre (a): barra + etiqueta = ancho de (a) ----------
-CB_PAD = 0.03                                         # hueco barra–etiqueta (fracción del ancho de (a))
-fig.canvas.draw()                                     # fija la posición final de (a) (cuadrado)
-_pa, _ph = ax_a.get_position(), cax_host.get_position()
-cax_host.set_position([_pa.x0, _ph.y0, _pa.width, _ph.height])   # celda de la barra = ancho de (a)
-lab_cb = cax_host.text(1.0, 0.5, r'$\tanh(\delta E/t)$', transform=cax_host.transAxes,
-                       ha='right', va='center')
-fig.canvas.draw()                                     # mide la etiqueta para ajustar la barra
-w_lab  = (lab_cb.get_window_extent().width
-          / cax_host.get_window_extent().width)
-cax = cax_host.inset_axes([0.0, 0.0, 1.0 - w_lab - CB_PAD, 1.0])
+# ---------- colorbar horizontal dentro de (a): números arriba, etiqueta abajo ----------
+cax = ax_a.inset_axes([0.40, 0.80, 0.52, 0.05])        # [x0, y0, ancho, alto] en fracción de (a)
 cb = fig.colorbar(im, cax=cax, orientation='horizontal', ticks=[-1, 0, 1])
 cax.xaxis.set_ticks_position('top')
-cax.tick_params(direction='in')
+cax.xaxis.set_label_position('bottom')
+cb.set_label(r'$\tanh(\delta E/t)$', color='white', labelpad=4)
+cax.tick_params(direction='in', colors='white')
+cb.outline.set_edgecolor('white')
 
 os.makedirs(OUT_DIR, exist_ok=True)
 fig.savefig(os.path.join(OUT_DIR, f'{NAME}.png'),
