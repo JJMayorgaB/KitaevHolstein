@@ -6,7 +6,9 @@ Pensado para correr en el clúster (keldysh); la figura la hace plot_fig2_parity
 
     (a)     plano (g/t, Δ/t), acoplamientos isótropos g1 = g2 = g, ε1 = ε2 = 0.25 t
     (b)–(d) plano (g1/t, g2/t) para Δ/t = 0.5, 1.0, 1.5, con ε1 = t y ε2 = 1.25² t
-t = ω0 = 1, así que g = λ ω0 = λ. Mallas completas de 200 × 200.
+t = ω0 = 1, así que g = λ ω0 = λ. Mallas de 200 × 200.
+En (b)–(d) solo se calcula el primer cuadrante g1, g2 ≥ 0 (el espectro es par en cada g_i,
+â_i → −â_i); plot_fig2_paritydiagrams.py reconstruye el plano completo por reflexión.
 
 El sector impar no depende de Δ: se calcula una sola vez por panel y se reutiliza.
 Continuación (warm start) a lo largo de cada fila: en (a) a lo largo de g, en (b)–(d) a lo
@@ -38,16 +40,17 @@ warnings.filterwarnings('ignore')
 # ══════════════════════════════════════════════════════════════════
 N_JOBS = -1                                  # núcleos para joblib (-1 = todos)
 T_VAL  = 1.0                                 # t (= ω0)
+n_grid = 50
 
 # (a) plano (g/t, Δ/t), isótropo
 EPS_A     = 0.25                             # ε1 = ε2 (en unidades de t)
-G_A       = np.linspace(0.0, 1.5, 200)       # g/t  (= λ, ω0 = t)
-DELTA_A   = np.linspace(0.0, 1.5, 200)       # Δ/t
+G_A       = np.linspace(0.0, 1.5, n_grid)       # g/t  (= λ, ω0 = t)
+DELTA_A   = np.linspace(0.0, 1.5, n_grid)       # Δ/t
 
 # (b)–(d) plano (g1/t, g2/t)
 EPS1_2D   = 1.0                              # ε1 = t
 EPS2_2D   = 1.25**2                          # ε2 = 1.25² t  (ε̃2 = 0 en g2 = 1.25 t)
-G_2D      = np.linspace(-2.5, 2.5, 200)      # g1/t y g2/t
+G_2D      = np.linspace(0.0, 2.5, n_grid)       # g1/t y g2/t, primer cuadrante (incluye g = 0)
 DELTA_2D  = [0.5, 1.0, 1.5]                  # Δ/t de (b), (c), (d)
 
 DATA_DIR  = os.path.join(HERE, 'Figures', 'paper_fig2', 'data')
@@ -98,12 +101,12 @@ def f_dE_a():
 
 
 def f_Eodd_2d():
-    return os.path.join(DATA_DIR, f'Eodd_2d_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
+    return os.path.join(DATA_DIR, f'Eodd_2d_Q1_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
                                   f'_n{len(G_2D)}_PAPS.txt')
 
 
 def f_dE_2d(Delta):
-    return os.path.join(DATA_DIR, f'dE_2d_Delta{Delta}_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
+    return os.path.join(DATA_DIR, f'dE_2d_Q1_Delta{Delta}_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
                                   f'_n{len(G_2D)}_PAPS.txt')
 
 
@@ -111,8 +114,8 @@ def _save_coords():
     os.makedirs(DATA_DIR, exist_ok=True)
     np.savetxt(f_coord('g_a'),     G_A,      fmt='%.10e', header='(a) g/t (columnas de dE_a)')
     np.savetxt(f_coord('Delta_a'), DELTA_A,  fmt='%.10e', header='(a) Delta/t (filas de dE_a)')
-    np.savetxt(f_coord('g_2d'),    G_2D,     fmt='%.10e',
-               header='(b)-(d) g1/t (columnas) y g2/t (filas) de dE_2d')
+    np.savetxt(f_coord('g_2d_Q1'), G_2D,     fmt='%.10e',
+               header='(b)-(d) g1/t (columnas) y g2/t (filas) de dE_2d_Q1, primer cuadrante')
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -8,6 +8,9 @@ de anisotropic_kitaev_holstein.ipynb (estilo de la celda 1):
     colorbar vertical a la derecha, centrada, de la altura de un panel
 Además imprime una verificación de (c): con Δ = t, la frontera exacta son las rectas
 g1 = sqrt(ε1 ω0) y g2 = sqrt(ε2 ω0).
+Los datos de (b)–(d) son del primer cuadrante; con MIRROR = True se reconstruye el plano
+completo por reflexión (el espectro es par en cada g_i); con MIRROR = False se grafica
+solo el primer cuadrante.
 Uso:  python plot_fig2_paritydiagrams.py
 """
 
@@ -51,11 +54,12 @@ plt.rcParams.update({
 
 OUT_DIR = os.path.join(HERE, 'Figures', 'paper_fig2')
 NAME    = 'parity_maps_2x2_PAPS'
+MIRROR  = True                    # True: plano completo por reflexión; False: solo g1, g2 ≥ 0
 
 # ══════════════════════════════════════════════════════════════════
 #  CARGA
 # ══════════════════════════════════════════════════════════════════
-_needed = [f_coord('g_a'), f_coord('Delta_a'), f_coord('g_2d'), f_dE_a()] + [f_dE_2d(D) for D in DELTA_2D]
+_needed = [f_coord('g_a'), f_coord('Delta_a'), f_coord('g_2d_Q1'), f_dE_a()] + [f_dE_2d(D) for D in DELTA_2D]
 _missing = [f for f in _needed if not os.path.exists(f)]
 if _missing:
     sys.exit('Faltan datos (corre primero fig2_paritydiagrams.py):\n  '
@@ -63,9 +67,16 @@ if _missing:
 
 g_iso     = np.loadtxt(f_coord('g_a'))
 Delta_iso = np.loadtxt(f_coord('Delta_a'))
-g_2d      = np.loadtxt(f_coord('g_2d'))
+g_2d      = np.loadtxt(f_coord('g_2d_Q1'))                    # primer cuadrante, g_2d[0] = 0
 dE_iso    = np.loadtxt(f_dE_a())                              # filas = Δ, columnas = g
 dE_2d     = {D: np.loadtxt(f_dE_2d(D)) for D in DELTA_2D}     # filas = g2, columnas = g1
+
+if MIRROR:
+    # reflexión g_i -> -g_i (sin duplicar g = 0): índices del cuadrante para cada punto del plano
+    k0     = 1 if np.isclose(g_2d[0], 0.0) else 0
+    idx    = np.concatenate([np.arange(len(g_2d) - 1, k0 - 1, -1), np.arange(len(g_2d))])
+    g_2d   = np.concatenate([-g_2d[k0:][::-1], g_2d])
+    dE_2d  = {D: M[np.ix_(idx, idx)] for D, M in dE_2d.items()}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -133,8 +144,8 @@ for ax, D, lab in zip([ax_b, ax_c, ax_d], DELTA_2D, [r'(b)', r'(c)', r'(d)']):
               extent=ext_2d, cmap='seismic', norm=norm_p)
     ax.contour(L1, L2, dE_2d[D], levels=[0.0], colors='0.15',
                linewidths=1.5, linestyles='--')
-    ax.set_xticks([-2, -1, 0, 1, 2])
-    ax.set_yticks([-2, -1, 0, 1, 2])
+    ax.set_xticks([-2, -1, 0, 1, 2] if MIRROR else [0, 1, 2])
+    ax.set_yticks([-2, -1, 0, 1, 2] if MIRROR else [0, 1, 2])
     ax.set_xlabel(r'$g_1/t$')
     ax.set_ylabel(r'$g_2/t$')
     ax.text(0.05, 0.95, lab, transform=ax.transAxes,
