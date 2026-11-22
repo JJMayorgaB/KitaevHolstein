@@ -71,6 +71,7 @@ G_MIN, G_MAX = 0.0, 2.0
 LAM       = np.linspace(G_MIN, G_MAX, N_GRID)  # λ1 (columnas) y λ2 (filas)
 
 CUT_LAM1  = [0.5, 1.0, 1.25]                    # cortes de (b)
+CUT_SHIFT = 1e-6                                # corte sobre la recta degenerada λ1 = √ε1 -> límite λ1 -> √ε1⁻
 N_CUT     = 400
 LAM2_CUT  = np.linspace(G_MIN, G_MAX, N_CUT)
 
@@ -140,9 +141,19 @@ def _point(sector, lam1, lam2, e1, e2, warm):
     return (E_v, F_v, D_v), (E_x, F_x, D_x), x
 
 
+def _off_line(lam, e):
+    """Si λ cae exactamente sobre una recta degenerada λ = √(ε/ω0) (con Δ = t, δE = 0 en toda la
+    recta), se toma el límite por la izquierda λ − CUT_SHIFT. Con las mallas actuales del mapa
+    (linspace(0, 2, N) con N = 100 o 300) ningún punto cae sobre esas rectas (|δE| ≥ 1.5e-5);
+    esto solo protege mallas que las contengan."""
+    return lam - CUT_SHIFT if (e > 0 and abs(lam - np.sqrt(e/omega0)) < 1e-12) else lam
+
+
 def _row(lam1, lam2_arr, e1, e2):
     """Fila con λ1 fijo a lo largo de λ2 (continuación en cada sector).
     Devuelve dict[(kind, method)] -> array(len(lam2_arr)) del estado base."""
+    lam1     = _off_line(lam1, e1)
+    lam2_arr = np.array([_off_line(l2, e2) for l2 in lam2_arr])
     n = len(lam2_arr)
     out = {(k, m): np.empty(n) for k in KINDS for m in METHODS}
     warm = {'odd': None, 'even': None}
@@ -229,9 +240,22 @@ def f_map(kind, method, e1, e2):
                                   f'_g{G_MIN:g}-{G_MAX:g}_n{N_GRID}.txt')
 
 
+def _on_line(v, e1):
+    """¿El corte λ1 = v cae sobre la recta ε̃1 = 0 (λ1 = √(ε1/ω0))? Con Δ = t, ahí los dos
+    sectores son exactamente degenerados para todo λ2 (H_e ≅ Π H_o Π tras ↑ <-> ↓)."""
+    return e1 > 0 and abs(v - np.sqrt(e1/omega0)) < 1e-12
+
+
+def cut_lam1(v, e1):
+    """λ1 con el que se calcula el corte: sobre la recta degenerada se toma el límite
+    λ1 -> √ε1⁻ (λ1 = v − CUT_SHIFT), donde el estado base sí está definido y cambia de paridad
+    al cruzar λ2 = √ε2, como en la Fig. 2(c) a un lado de la frontera vertical."""
+    return v - CUT_SHIFT if _on_line(v, e1) else v
+
+
 def f_cut(kind, method, e1, e2):
-    """Cortes del estado base; filas = λ1 de CUT_LAM1, columnas = λ2."""
-    lam = '-'.join(f'{v:g}' for v in CUT_LAM1)
+    """Cortes del estado base; filas = λ1 de CUT_LAM1, columnas = λ2 (sufijo 'm': límite por izquierda)."""
+    lam = '-'.join(f'{v:g}' + ('m' if _on_line(v, e1) else '') for v in CUT_LAM1)
     return os.path.join(DATA_DIR, f'cut_{kind}_{method}_{_tag(e1, e2)}'
                                   f'_lam1{lam}_g{G_MIN:g}-{G_MAX:g}_n{N_CUT}.txt')
 
@@ -257,7 +281,7 @@ def compute_maps(sets):
         for lam1 in LAM:
             jobs.append(delayed(_row)(lam1, LAM, e1, e2)); keys.append((e1, e2, 'map'))
         for lam1 in CUT_LAM1:
-            jobs.append(delayed(_row)(lam1, LAM2_CUT, e1, e2)); keys.append((e1, e2, 'cut'))
+            jobs.append(delayed(_row)(cut_lam1(lam1, e1), LAM2_CUT, e1, e2)); keys.append((e1, e2, 'cut'))
     print(f'mapa: {len(todo)} (ε1, ε2) × ({N_GRID} filas × {N_GRID} λ2 + {len(CUT_LAM1)} cortes × '
           f'{N_CUT} λ2), PAPS + exacto ...', flush=True)
     res = Parallel(n_jobs=N_JOBS, verbose=5)(jobs)
