@@ -35,11 +35,11 @@ VALIDACIÓN (independiente del ansatz y de los modos colectivos), en VAL_THETA �
     con J = t (impar) o Δ (par).
 
 Uso:
-    python X1X2_theta_delta.py                        # ε1 = ε2 = 1, Λ/√2 = 3 (mapa y validación)
+    python X1X2_theta_delta.py                        # todos los (ε1, ε2, Λ/√2) de SWEEP
     python X1X2_theta_delta.py eps1 eps2 L            # mapa y validación  (L = Λ/√2)
     python X1X2_theta_delta.py eps1 eps2 L map        # solo el mapa
     python X1X2_theta_delta.py eps1 eps2 L val        # solo la validación
-Los .txt se guardan en Figures/paper_X1X2/data/ y no se recalculan si ya existen
+Los .txt se guardan en Figures/fig_X1X2/data/ y no se recalculan si ya existen
 (bórralos para recalcular).
 """
 
@@ -77,22 +77,24 @@ VAL_THETA = [np.pi/8, np.pi/4, 3*np.pi/8]
 VAL_DELTA = [0.5, 1.0, 1.5]
 N_MIN, N_MAX, N_CONV = 30, 160, 20            # truncación de cada cavidad en el exacto de laboratorio
 
-DATA_DIR = os.path.join(HERE, 'Figures', 'paper_X1X2', 'data')
+DATA_DIR = os.path.join(HERE, 'Figures', 'fig_X1X2', 'data')
 
 
-EPS1_DEF, EPS2_DEF, L_DEF = 1.0, 1.0, 3.0     # valores por defecto si no se pasan argumentos
+SWEEP = [(0.25, 0.25, 1.0), (0.25, 0.25, 1.5), (0.25, 0.25, 3.0),   # (ε1, ε2, Λ/√2) que se barren
+         (1.0,  1.0,  1.0), (1.0,  1.0,  1.5), (1.0,  1.0,  3.0)]    # si no se pasan argumentos
 
 
 def _args():
+    """Lista de (ε1, ε2, L) y modo. Sin argumentos: todos los de SWEEP."""
     if len(sys.argv) == 1:
-        return EPS1_DEF, EPS2_DEF, L_DEF, 'all'
+        return SWEEP, 'all'
     if len(sys.argv) < 4:
         sys.exit('uso: python X1X2_theta_delta.py [eps1 eps2 L [map | val]]    (L = Λ/√2)')
     e1, e2, L = (float(v) for v in sys.argv[1:4])
     which = sys.argv[4].lower() if len(sys.argv) > 4 else 'all'
     if which not in ('all', 'map', 'val'):
         sys.exit('uso: python X1X2_theta_delta.py [eps1 eps2 L [map | val]]    (L = Λ/√2)')
-    return e1, e2, L, which
+    return [(e1, e2, L)], which
 
 
 def _lam12(Lam, th):
@@ -295,9 +297,11 @@ def compute_val(e1, e2, L):
 
 
 if __name__ == '__main__':
-    e1, e2, L, which = _args()
-    if which in ('all', 'map'):
-        compute_map(e1, e2, L)
-    if which in ('all', 'val'):
-        compute_val(e1, e2, L)
+    sets, which = _args()
+    for e1, e2, L in sets:
+        print(f'\n══ ε1 = {e1:g}, ε2 = {e2:g}, Λ/√2 = {L:g} ══')
+        if which in ('all', 'map'):
+            compute_map(e1, e2, L)
+        if which in ('all', 'val'):
+            compute_val(e1, e2, L)
     print(f'\nDatos en: {DATA_DIR}')
