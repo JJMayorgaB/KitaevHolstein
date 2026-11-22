@@ -104,18 +104,21 @@ if 1.0 in dE_2d:
 # ══════════════════════════════════════════════════════════════════
 norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-fig = plt.figure(figsize=(10.0, 8.0))
-outer = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1.0, 0.03], wspace=0.08)
-gs    = gridspec.GridSpecFromSubplotSpec(2, 2, subplot_spec=outer[0],
+fig = plt.figure(figsize=(8.4, 8.8))
+# fila 0: colorbar horizontal sobre (a); fila 1: paneles 2x2
+outer = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[0.035, 1.0], hspace=0.09)
+gs_cb = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[0], wspace=0.38)
+gs    = gridspec.GridSpecFromSubplotSpec(2, 2, subplot_spec=outer[1],
                                          hspace=0.35, wspace=0.38)
-gs_cb = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=outer[1],
-                                         height_ratios=[0.5, 1.0, 0.5], hspace=0.0)
 
 ax_a = fig.add_subplot(gs[0, 0])
 ax_b = fig.add_subplot(gs[0, 1])
 ax_c = fig.add_subplot(gs[1, 0], sharex=ax_b, sharey=ax_b)
 ax_d = fig.add_subplot(gs[1, 1], sharex=ax_b, sharey=ax_b)
-cax  = fig.add_subplot(gs_cb[1, 0])
+cax_host = fig.add_subplot(gs_cb[0, 0])             # celda del ancho de (a): colorbar + etiqueta
+cax_host.axis('off')
+for _ax in (ax_a, ax_b, ax_c, ax_d):
+    _ax.set_box_aspect(1)                             # mapas cuadrados (1:1)
 
 
 def _ticks(ax, col='white'):
@@ -144,18 +147,32 @@ for ax, D, lab in zip([ax_b, ax_c, ax_d], DELTA_2D, [r'(b)', r'(c)', r'(d)']):
               extent=ext_2d, cmap='seismic', norm=norm_p)
     ax.contour(L1, L2, dE_2d[D], levels=[0.0], colors='0.15',
                linewidths=1.5, linestyles='--')
-    ax.set_xticks([-2, -1, 0, 1, 2] if MIRROR else [0, 1, 2])
-    ax.set_yticks([-2, -1, 0, 1, 2] if MIRROR else [0, 1, 2])
+    # ticks enteros dentro de la malla; un solo 0 en la esquina (el del eje x)
+    _int = np.arange(np.ceil(g_2d[0]), np.floor(g_2d[-1]) + 1)
+    ax.set_xticks(_int)
+    ax.set_yticks(_int if MIRROR else _int[_int > 0])
+    ax.set_xlim(g_2d[0], g_2d[-1])                    # los límites siguen la malla, no los ticks
+    ax.set_ylim(g_2d[0], g_2d[-1])
     ax.set_xlabel(r'$g_1/t$')
     ax.set_ylabel(r'$g_2/t$')
     ax.text(0.05, 0.95, lab, transform=ax.transAxes,
             ha='left', va='top', color='white')
     _ticks(ax)
 
-# ---------- colorbar vertical común ----------
-cb = fig.colorbar(im, cax=cax, orientation='vertical', ticks=[-1, 0, 1])
-cb.set_label(r'$\tanh(\delta E/t)$')
-cb.ax.tick_params(direction='in')
+# ---------- colorbar horizontal común, sobre (a): barra + etiqueta = ancho de (a) ----------
+CB_PAD = 0.03                                         # hueco barra–etiqueta (fracción del ancho de (a))
+fig.canvas.draw()                                     # fija la posición final de (a) (cuadrado)
+_pa, _ph = ax_a.get_position(), cax_host.get_position()
+cax_host.set_position([_pa.x0, _ph.y0, _pa.width, _ph.height])   # celda de la barra = ancho de (a)
+lab_cb = cax_host.text(1.0, 0.5, r'$\tanh(\delta E/t)$', transform=cax_host.transAxes,
+                       ha='right', va='center')
+fig.canvas.draw()                                     # mide la etiqueta para ajustar la barra
+w_lab  = (lab_cb.get_window_extent().width
+          / cax_host.get_window_extent().width)
+cax = cax_host.inset_axes([0.0, 0.0, 1.0 - w_lab - CB_PAD, 1.0])
+cb = fig.colorbar(im, cax=cax, orientation='horizontal', ticks=[-1, 0, 1])
+cax.xaxis.set_ticks_position('top')
+cax.tick_params(direction='in')
 
 os.makedirs(OUT_DIR, exist_ok=True)
 fig.savefig(os.path.join(OUT_DIR, f'{NAME}.png'),
