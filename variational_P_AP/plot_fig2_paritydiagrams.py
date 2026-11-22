@@ -104,7 +104,7 @@ if 1.0 in dE_2d:
 # ══════════════════════════════════════════════════════════════════
 norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-fig = plt.figure(figsize=(10.0, 10.0))               # 2x2 paneles (colorbar dentro de (a))
+fig = plt.figure(figsize=(10.0, 9.0))                # 2x2 paneles (colorbar dentro de (a))
 gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.35, wspace=0.38)
 
 ax_a = fig.add_subplot(gs[0, 0])
@@ -115,7 +115,7 @@ ax_d = fig.add_subplot(gs[1, 1], sharex=ax_b, sharey=ax_b)
 
 def _ticks(ax, col='white'):
     ax.tick_params(axis='both', direction='in', bottom=True, top=True,
-                   left=True, right=True, color=col, size=5, width=1.5)
+                   left=True, right=True, color=col, size=9, width=2.2)
 
 
 # ---------- (a) mapa isotrópico (g, Δ) ----------
@@ -126,7 +126,11 @@ ax_a.contour(g_iso, Delta_iso, dE_iso, levels=[0.0], colors='0.15',
              linewidths=1.75, linestyles='--')
 ax_a.set_xlabel(r'$g/t$')
 ax_a.set_ylabel(r'$\Delta/t$')
-ax_a.set_ylim(0.1, 1.5)
+_int_a = np.arange(np.ceil(g_iso[0]), np.floor(g_iso[-1]) + 1)
+ax_a.set_xticks(_int_a)
+ax_a.set_yticks(_int_a[_int_a > 0])                   # un solo 0 en la esquina (el del eje x)
+ax_a.set_xlim(g_iso[0], g_iso[-1])                    # los límites siguen la malla
+ax_a.set_ylim(Delta_iso[0], Delta_iso[-1])
 ax_a.text(0.05, 0.95, r'(a)', transform=ax_a.transAxes, ha='left', va='top', color='white')
 _ticks(ax_a)
 
