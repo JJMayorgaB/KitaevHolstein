@@ -104,7 +104,7 @@ if 1.0 in dE_2d:
 # ══════════════════════════════════════════════════════════════════
 norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-fig = plt.figure(figsize=(10.0, 9.0))                # (5, 4) por panel + fila de la colorbar
+fig = plt.figure(figsize=(10.0, 10.0))               # 2x2 paneles + fila de la colorbar
 # fila 0: colorbar horizontal sobre (a); fila 1: paneles 2x2
 outer = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[0.035, 1.0], hspace=0.09)
 gs_cb = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[0], wspace=0.38)
