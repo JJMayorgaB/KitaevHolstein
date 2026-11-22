@@ -31,7 +31,7 @@ plt.rcParams.update({
 omega0 = 1.0
 nLam   = 200
 nth    = 200
-KIND   = 'exact'          # 'var' (variacional) o 'exact'
+KIND   = 'var'          # 'var' (variacional) o 'exact'
 OUT    = 'Resultados_aniso'
 CMAP   = 'inferno'
 
