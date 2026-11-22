@@ -104,7 +104,7 @@ if 1.0 in dE_2d:
 # ══════════════════════════════════════════════════════════════════
 norm_p = TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
 
-fig = plt.figure(figsize=(8.4, 8.8))
+fig = plt.figure(figsize=(10.0, 9.0))                # (5, 4) por panel + fila de la colorbar
 # fila 0: colorbar horizontal sobre (a); fila 1: paneles 2x2
 outer = gridspec.GridSpec(2, 1, figure=fig, height_ratios=[0.035, 1.0], hspace=0.09)
 gs_cb = gridspec.GridSpecFromSubplotSpec(1, 2, subplot_spec=outer[0], wspace=0.38)
@@ -117,8 +117,6 @@ ax_c = fig.add_subplot(gs[1, 0], sharex=ax_b, sharey=ax_b)
 ax_d = fig.add_subplot(gs[1, 1], sharex=ax_b, sharey=ax_b)
 cax_host = fig.add_subplot(gs_cb[0, 0])             # celda del ancho de (a): colorbar + etiqueta
 cax_host.axis('off')
-for _ax in (ax_a, ax_b, ax_c, ax_d):
-    _ax.set_box_aspect(1)                             # mapas cuadrados (1:1)
 
 
 def _ticks(ax, col='white'):
