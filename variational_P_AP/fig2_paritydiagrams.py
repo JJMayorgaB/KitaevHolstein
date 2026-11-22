@@ -48,9 +48,9 @@ G_A       = np.linspace(0.0, 1.5, n_grid)       # g/t  (= λ, ω0 = t)
 DELTA_A   = np.linspace(0.0, 1.5, n_grid)       # Δ/t
 
 # (b)–(d) plano (g1/t, g2/t)
-EPS1_2D   = 1.0                              # ε1 = t
-EPS2_2D   = 1.25**2                          # ε2 = 1.25² t  (ε̃2 = 0 en g2 = 1.25 t)
-G_2D      = np.linspace(0.0, 2.5, n_grid)       # g1/t y g2/t, primer cuadrante (incluye g = 0)
+EPS1_2D   = 0.25                               # ε1 = t
+EPS2_2D   = 0.25                             # ε2 = 1.25² t  (ε̃2 = 0 en g2 = 1.25 t)
+G_2D      = np.linspace(0.0, 1.0, n_grid)       # g1/t y g2/t, primer cuadrante (incluye g = 0)
 DELTA_2D  = [0.5, 1.0, 1.5]                  # Δ/t de (b), (c), (d)
 
 DATA_DIR  = os.path.join(HERE, 'Figures', 'paper_fig2', 'data')

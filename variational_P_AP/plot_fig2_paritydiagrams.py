@@ -54,7 +54,7 @@ plt.rcParams.update({
 
 OUT_DIR = os.path.join(HERE, 'Figures', 'paper_fig2')
 NAME    = 'parity_maps_2x2_PAPS'
-MIRROR  = True                    # True: plano completo por reflexión; False: solo g1, g2 ≥ 0
+MIRROR  = False                   # True: plano completo por reflexión; False: solo g1, g2 ≥ 0
 
 # ══════════════════════════════════════════════════════════════════
 #  CARGA
