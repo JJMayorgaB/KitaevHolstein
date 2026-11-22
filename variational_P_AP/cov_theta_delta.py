@@ -34,10 +34,11 @@ VALIDACIÓN (independiente del ansatz y de los modos colectivos), en VAL_THETA �
     con J = t (impar) o Δ (par).
 
 Uso:
+    python cov_theta_delta.py                        # todos los (ε1, ε2, Λ/√2) de SWEEP (X1X2_theta_delta.py)
     python cov_theta_delta.py eps1 eps2 L            # mapa y validación  (L = Λ/√2)
     python cov_theta_delta.py eps1 eps2 L map        # solo el mapa
     python cov_theta_delta.py eps1 eps2 L val        # solo la validación
-Los .txt se guardan en Figures/paper_cov/data/ y no se recalculan si ya existen
+Los .txt se guardan en Figures/fig_X1X2/data/ (prefijo cov_) y no se recalculan si ya existen
 (bórralos para recalcular).
 """
 
@@ -52,6 +53,7 @@ from joblib import Parallel, delayed
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+from X1X2_theta_delta import SWEEP                            # mismos (ε1, ε2, Λ/√2) que X1X2
 from variational_P_AP import (minimize_sector, sector_params, closed_ABC, weights_2x2,
                               var_states, get_ops, exact_ground, _Mof_Lam, omega0)
 
@@ -75,17 +77,20 @@ VAL_THETA = [np.pi/8, np.pi/4, 3*np.pi/8]
 VAL_DELTA = [0.5, 1.0, 1.5]
 N_MIN, N_MAX, N_CONV = 30, 160, 20            # truncación de cada cavidad en el exacto de laboratorio
 
-DATA_DIR = os.path.join(HERE, 'Figures', 'paper_cov', 'data')
+DATA_DIR = os.path.join(HERE, 'Figures', 'fig_X1X2', 'data')   # junto a los de X1X2, con prefijo cov_
 
 
 def _args():
+    """Lista de (ε1, ε2, L) y modo. Sin argumentos: todos los de SWEEP."""
+    if len(sys.argv) == 1:
+        return SWEEP, 'all'
     if len(sys.argv) < 4:
-        sys.exit('uso: python cov_theta_delta.py eps1 eps2 L [map | val]    (L = Λ/√2)')
+        sys.exit('uso: python cov_theta_delta.py [eps1 eps2 L [map | val]]    (L = Λ/√2)')
     e1, e2, L = (float(v) for v in sys.argv[1:4])
     which = sys.argv[4].lower() if len(sys.argv) > 4 else 'all'
     if which not in ('all', 'map', 'val'):
-        sys.exit('uso: python cov_theta_delta.py eps1 eps2 L [map | val]    (L = Λ/√2)')
-    return e1, e2, L, which
+        sys.exit('uso: python cov_theta_delta.py [eps1 eps2 L [map | val]]    (L = Λ/√2)')
+    return [(e1, e2, L)], which
 
 
 def _lam12(Lam, th):
@@ -121,7 +126,10 @@ def cov_from_components(psi_u, psi_d, sector, lam1, lam2, Lam, Xb):
 
 def cov_variational(sector, x, eps, epsp, J, Lam, lam1, lam2, ops, Xb):
     A, B, C = closed_ABC(x, eps, epsp, J, Lam)
-    cu, cd  = weights_2x2(A, B, C)
+    if C == 0.0 and abs(A - B) < 1e-10*max(1.0, abs(A)):
+        cu, cd = np.sqrt(0.5), np.sqrt(0.5)     # bloque degenerado (J = 0, δ_α = 0): límite J -> 0⁺
+    else:
+        cu, cd = weights_2x2(A, B, C)
     pu, pd  = var_states(x, Lam, ops)
     return cov_from_components(cu*pu, cd*pd, sector, lam1, lam2, Lam, Xb)
 
@@ -221,17 +229,17 @@ def _tag(e1, e2, L):
 
 
 def f_odd(e1, e2, L):
-    return os.path.join(DATA_DIR, f'odd_{_tag(e1, e2, L)}_nth{N_TH}_PAPS.txt')
+    return os.path.join(DATA_DIR, f'cov_odd_{_tag(e1, e2, L)}_nth{N_TH}_PAPS.txt')
 
 
 def f_even(kind, e1, e2, L):
     """kind = 'E' (energía) o 'Cov'; filas = Δ/t, columnas = θ."""
-    return os.path.join(DATA_DIR, f'even_{kind}_{_tag(e1, e2, L)}_nth{N_TH}'
+    return os.path.join(DATA_DIR, f'cov_even_{kind}_{_tag(e1, e2, L)}_nth{N_TH}'
                                   f'_D{D_MIN:g}-{D_MAX:g}_nD{N_D}_PAPS.txt')
 
 
 def f_val(e1, e2, L):
-    return os.path.join(DATA_DIR, f'validation_{_tag(e1, e2, L)}_PAPS.txt')
+    return os.path.join(DATA_DIR, f'cov_validation_{_tag(e1, e2, L)}_PAPS.txt')
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -289,9 +297,11 @@ def compute_val(e1, e2, L):
 
 
 if __name__ == '__main__':
-    e1, e2, L, which = _args()
-    if which in ('all', 'map'):
-        compute_map(e1, e2, L)
-    if which in ('all', 'val'):
-        compute_val(e1, e2, L)
+    sets, which = _args()
+    for e1, e2, L in sets:
+        print(f'\n══ ε1 = {e1:g}, ε2 = {e2:g}, Λ/√2 = {L:g} ══')
+        if which in ('all', 'map'):
+            compute_map(e1, e2, L)
+        if which in ('all', 'val'):
+            compute_val(e1, e2, L)
     print(f'\nDatos en: {DATA_DIR}')
