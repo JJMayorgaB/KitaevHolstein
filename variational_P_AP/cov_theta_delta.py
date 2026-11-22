@@ -65,8 +65,8 @@ warnings.filterwarnings('ignore')
 N_JOBS = -1                                   # núcleos para joblib (-1 = todos)
 T_VAL  = 1.0                                  # t (= ω0)
 
-N_TH   = 101                                  # puntos en θ ∈ [0, π/2] (impar: incluye θ = π/4)
-N_D    = 101                                  # puntos en Δ/t (impar: incluye Δ = 1 en [0, 2])
+N_TH   = 300                                  # puntos en θ ∈ [0, π/2] (101 en las pruebas)
+N_D    = 300                                  # puntos en Δ/t (101 en las pruebas)
 D_MIN, D_MAX = 0.0, 2.0                       # rango de Δ/t
 
 THETA = np.linspace(0.0, 0.5*np.pi, N_TH)
