@@ -50,7 +50,7 @@ DELTA_A   = np.linspace(0.0, 1.5, n_grid)       # Δ/t
 # (b)–(d) plano (g1/t, g2/t)
 EPS1_2D   = 1.0                               # ε1 = t
 EPS2_2D   = (1.25)**2                             # ε2 = 1.25² t  (ε̃2 = 0 en g2 = 1.25 t)
-G_2D      = np.linspace(0.0, 2.0, n_grid)       # g1/t y g2/t, primer cuadrante (incluye g = 0)
+G_2D      = np.linspace(0.0, 2.25, n_grid)       # g1/t y g2/t, primer cuadrante (incluye g = 0)
 DELTA_2D  = [0.5, 1.0, 1.5]                  # Δ/t de (b), (c), (d)
 
 DATA_DIR  = os.path.join(HERE, 'Figures', 'paper_fig2', 'data')
@@ -92,22 +92,25 @@ def _row_2d(sector, g1, Delta):
 #  ARCHIVOS
 # ══════════════════════════════════════════════════════════════════
 def f_coord(name):
-    return os.path.join(DATA_DIR, f'coord_{name}.txt')
+    tag = {'g_a':     f'_g{G_A[0]}-{G_A[-1]}_n{len(G_A)}',
+           'Delta_a': f'_D{DELTA_A[0]}-{DELTA_A[-1]}_n{len(DELTA_A)}',
+           'g_2d_Q1': f'_g{G_2D[0]}-{G_2D[-1]}_n{len(G_2D)}'}[name]
+    return os.path.join(DATA_DIR, f'coord_{name}{tag}.txt')
 
 
 def f_dE_a():
     return os.path.join(DATA_DIR, f'dE_a_iso_eps{EPS_A}_t{T_VAL}'
-                                  f'_nG{len(G_A)}_nD{len(DELTA_A)}_PAPS.txt')
+                                  f'_g{G_A[0]}-{G_A[-1]}_nG{len(G_A)}_D{DELTA_A[0]}-{DELTA_A[-1]}_nD{len(DELTA_A)}_PAPS.txt')
 
 
 def f_Eodd_2d():
     return os.path.join(DATA_DIR, f'Eodd_2d_Q1_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
-                                  f'_n{len(G_2D)}_PAPS.txt')
+                                  f'_g{G_2D[0]}-{G_2D[-1]}_n{len(G_2D)}_PAPS.txt')
 
 
 def f_dE_2d(Delta):
     return os.path.join(DATA_DIR, f'dE_2d_Q1_Delta{Delta}_eps1{EPS1_2D}_eps2{EPS2_2D}_t{T_VAL}'
-                                  f'_n{len(G_2D)}_PAPS.txt')
+                                  f'_g{G_2D[0]}-{G_2D[-1]}_n{len(G_2D)}_PAPS.txt')
 
 
 def _save_coords():
