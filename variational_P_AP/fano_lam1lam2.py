@@ -8,7 +8,7 @@ Pensado para correr en el clúster (keldysh); las figuras las hace plot_fano_lam
 
     Δ = t = ω0 = 1,  g_i = λ_i ω0,  primer cuadrante λ1, λ2 ∈ [0, 2]
     |ε1| = |ε2| = 0.25 ω0: los cuatro signos (EPS_SETS)
-    mapa N_GRID × N_GRID y cortes finos a λ1 = 0.5, 1.0, 1.25 (N_CUT puntos en λ2)
+    mapa N_GRID × N_GRID y cortes finos a λ1 = 0.5, 0.75, 1.0 (N_CUT puntos en λ2)
 
 Convención de pseudoespín (notas):
     impar: |↑> = |10>, |↓> = |01>;   par: |↑> = |11>, |↓> = |00>
@@ -70,7 +70,7 @@ N_GRID    = 100                                 # malla del mapa (prueba; luego 
 G_MIN, G_MAX = 0.0, 2.0
 LAM       = np.linspace(G_MIN, G_MAX, N_GRID)  # λ1 (columnas) y λ2 (filas)
 
-CUT_LAM1  = [0.5, 1.0, 1.25]                    # cortes de (b)
+CUT_LAM1  = [0.5, 0.75, 1.0]                    # cortes de (b)
 CUT_SHIFT = 1e-6                                # corte sobre la recta degenerada λ1 = √ε1 -> límite λ1 -> √ε1⁻
 N_CUT     = 400
 LAM2_CUT  = np.linspace(G_MIN, G_MAX, N_CUT)
