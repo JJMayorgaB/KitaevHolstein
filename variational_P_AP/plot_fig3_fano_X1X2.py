@@ -2,7 +2,7 @@
 """
 FIGURA 3 (nueva) del paper, a partir de datos ya calculados (no recalcula nada):
 
-    (a) cortes a λ1 = 0.5, 0.75, 1.0 de F1 (sólido, eje izquierdo) y (ΔX1)² (discontinuo, eje derecho)
+    (a) cortes a λ1 = 0.5, 1.0, 1.25 de F1 (sólido, eje izquierdo) y (ΔX1)² (discontinuo, eje derecho)
         vs λ2: líneas = (P+AP)S, círculos abiertos = F1 exacto, cuadrados abiertos = (ΔX1)² exacto.
         Datos de fano_lam1lam2.py (Figures/fig_fano/data/), ε1 = ε2 = 0.25, Δ = t = ω0.
         Mismas escalas que la figura original: F1 ×10^-1 + 1, (ΔX1)² ×10^-1 + 0.5.
@@ -39,11 +39,11 @@ plt.rcParams.update({
     'text.latex.preamble': r'\usepackage{amsmath}\usepackage[utf8]{inputenc}',
     'font.family': 'serif',
     'font.serif': ['Computer Modern'],
-    'font.size': 26,
-    'axes.labelsize': 26,
-    'axes.titlesize': 26,
-    'xtick.labelsize': 22,
-    'ytick.labelsize': 22,
+    'font.size': 33,
+    'axes.labelsize': 33,
+    'axes.titlesize': 33,
+    'xtick.labelsize': 28,
+    'ytick.labelsize': 28,
     'legend.fontsize': 20,
     'figure.titlesize': 24,
     'axes.facecolor': 'white',
@@ -65,11 +65,11 @@ E1_B, E2_B, L_B = 0.25, 0.25, 1.0             # (b)
 # ── escalas del panel (a), las de la figura original: valor mostrado = (y - offset)/scale ──
 F1_OFF,  F1_SCL  = 1.0, 1e-1
 DX1_OFF, DX1_SCL = 0.5, 1e-1
-SCI_FS   = 18                                 # tamaño de los multiplicadores
+SCI_FS   = 22                                 # tamaño de los multiplicadores
 EX_EVERY = 25                                 # submuestreo de los marcadores exactos (400 -> 16)
 MS       = 6                                  # tamaño de los marcadores
 
-# paletas de los cortes λ1 = 0.5, 0.75, 1.0 (sin rojo ni azul)
+# paletas de los cortes λ1 = 0.5, 1.0, 1.25 (sin rojo ni azul)
 CUT_SCHEMES = {
     'viridis':     [plt.cm.viridis(0.10), plt.cm.viridis(0.45), plt.cm.viridis(0.78)],
     'green-ochre': ['#1b7837', '#b8860b', '#4d4d4d'],
@@ -84,9 +84,9 @@ CUT_SCHEMES = {
     'inferno-D':   [plt.cm.inferno(0.30), plt.cm.inferno(0.60), plt.cm.inferno(0.85)],
 }
 CUT_SCHEME = 'inferno-D'
-# posición (λ2, F1, alineación) de las etiquetas λ1 = 0.5, 0.75, 1.0 del panel (a)
-STYLE_LEG_POS = (0.92, 1.114)                  # (λ2, F1) del borde izquierdo de la leyenda F1 / (ΔX1)²
-CUT_LABEL_POS = [(1.33, 1.0618, 'left'), (1.02, 1.0837, 'left'), (0.71, 1.1451, 'left')]
+# posición (λ2, F1, alineación) de las etiquetas λ1 = 0.5, 1.0, 1.25 del panel (a)
+STYLE_LEG_POS = (0.85, 1.114)                  # (λ2, F1) del borde izquierdo de la leyenda F1 / (ΔX1)²
+CUT_LABEL_POS = [(1.36, 1.0616, 'left'), (0.74, 1.1454, 'left'), (1.04, 1.0858, 'left')]
 BOUNDARY_COLOR = 'white'                       # color de la frontera δE = 0 en (b)
 CMAP_B     = 'seismic_r'                      # (b): <X1 X2> < 0 (impar) rojo, > 0 (par) azul
 
@@ -157,9 +157,9 @@ def panel_a(ax_b, cut_colors):
     for i, v in enumerate(FA.CUT_LAM1):
         x, y, ha = CUT_LABEL_POS[i]
         ax_b.text(x, y, rf'$\lambda_1 = {v}$', color=cut_colors[i], ha=ha, va='center',
-                  fontsize=18, transform=ax_b.transData)
+                  fontsize=19, transform=ax_b.transData)
     ax_b.legend(handles=h2, loc='center left', bbox_to_anchor=STYLE_LEG_POS, bbox_transform=ax_b.transData,
-                frameon=False, fontsize=15, handlelength=1.8, labelspacing=0.2, borderaxespad=0.0)
+                frameon=False, fontsize=17, handlelength=1.5, labelspacing=0.2, borderaxespad=0.0)
     return ax_b2
 
 
@@ -184,8 +184,8 @@ def panel_b(fig, ax):
     ax.set_ylim(XX.DELTA[0], XX.DELTA[-1])
     ax.set_xlabel(r'$\theta$')
     ax.set_ylabel(r'$\Delta/t$')
-    _ticks(ax)
-    ax.text(0.05, 0.95, '(b)', transform=ax.transAxes, ha='left', va='top', color='black')
+    _ticks(ax, col='white')
+    ax.text(0.05, 0.95, '(b)', transform=ax.transAxes, ha='left', va='top', color='white')
     cb = fig.colorbar(im, ax=ax, pad=0.03, ticks=[-vmax, 0.0, vmax])
     cb.ax.set_yticklabels([_fmt(-vmax), _fmt(0.0), _fmt(vmax)])
     cb.set_label(r'$\langle\hat X_1\hat X_2\rangle$')
@@ -200,8 +200,8 @@ def main(scheme=CUT_SCHEME, fig_name=NAME, out_dir=OUT_DIR, show=True):
     if miss:
         sys.exit('Faltan datos:\n  ' + '\n  '.join(os.path.relpath(f, HERE) for f in miss))
 
-    fig = plt.figure(figsize=(11, 4))
-    gs  = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1.0, 1.25], wspace=0.55)
+    fig = plt.figure(figsize=(11.5, 4))
+    gs  = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1, 1.2], wspace=0.65)
     panel_a(fig.add_subplot(gs[0, 0]), CUT_SCHEMES[scheme])
     panel_b(fig, fig.add_subplot(gs[0, 1]))
 
